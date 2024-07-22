@@ -1,0 +1,16 @@
+{
+    "files.associations": {
+        "auxuart.h": "c",
+        "irq.h": "c",
+        "gpio.h": "c",
+        "bcm2835.h": "c",
+        "mailbox.h": "c",
+        "timer.h": "c",
+        "spi0.h": "c",
+        "spi1.h": "c",
+        "printf.h": "c",
+        "rpi.h": "c",
+        "uart.h": "c",
+        "spiaux.h": "c"
+    }
+}

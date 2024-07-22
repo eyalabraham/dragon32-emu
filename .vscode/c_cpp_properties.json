@@ -1,0 +1,28 @@
+{
+    "env": {
+        "myDefines": [
+            "RPI_BARE_METAL=0",
+        ]
+    },
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "/home/eyal/data/projects/dragon/code/dragon32-emu/include/**",
+            ],
+            "defines": ["${myDefines}"],
+            "intelliSenseMode": "linux-gcc-x64",
+            "configurationProvider": "ms-vscode.makefile-tools",
+            "configurationProviderInCppPropertiesJson": "ms-vscode.makefile-tools",
+            "mergeConfigurations": false,
+            "browse": {
+                "path": [
+                    "/home/eyal/data/projects/dragon/code/dragon32-emu/**",
+                    "${workspaceFolder}"
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            }
+        },
+    ],
+    "version": 4
+}
