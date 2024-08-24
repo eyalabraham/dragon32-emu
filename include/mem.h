@@ -37,6 +37,6 @@ int  mem_read(int address);
 int  mem_write(int address, int data);
 int  mem_define_rom(int addr_start, int addr_end);
 int  mem_define_io(int addr_start, int addr_end, io_handler_callback io_handler);
-int  mem_load(int addr_start, uint8_t *buffer, int length);
+int  mem_load(int addr_start, const uint8_t *buffer, int length);
 
 #endif  /* __MEM_H__ */

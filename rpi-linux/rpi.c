@@ -21,7 +21,7 @@
 #include    <string.h>
 
 #include    "rpi-linux/bcm2835.h"
-#include    "printf.h"
+#include    "dbgmsg.h"
 #include    "rpi.h"
 
 /* -----------------------------------------
@@ -29,7 +29,8 @@
 ----------------------------------------- */
 // AVR and keyboard
 #define     AVR_RESET           RPI_V2_GPIO_P1_11
-#define     PRI_TEST_POINT      RPI_V2_GPIO_P1_07
+#define     TEST_POINT          RPI_V2_GPIO_P1_07
+#define     MOTOR_LED           RPI_V2_GPIO_P1_12
 
 // Miscellaneous IO
 #define     EMULATOR_RESET      RPI_V2_GPIO_P1_29
@@ -61,7 +62,8 @@ static int       fb_set_tty(const int mode);
 /* -----------------------------------------
    Module globals
 ----------------------------------------- */
-static int      fbfd = 0;                        // frame buffer file descriptor
+static int      fbfd = 0;                       // frame buffer file descriptor
+static uint8_t  motor_led_ctrl = 0;             // Holds the source and state of LED
 
 /*------------------------------------------------
  * rpi_gpio_init()
@@ -79,13 +81,13 @@ int rpi_gpio_init(void)
 {
     if (!bcm2835_init())
     {
-      printf("rpi_gpio_init()[%d]: bcm2835_init failed. Are you running as root?\n", __LINE__);
+      dbg_printf(0, "rpi_gpio_init()[%d]: bcm2835_init failed. Are you running as root?\n", __LINE__);
       return -1;
     }
 
     if (!bcm2835_spi_begin())
     {
-      printf("rpi_gpio_init()[%d]: bcm2835_spi_begin failed. Are you running as root?\n", __LINE__);
+      dbg_printf(0, "rpi_gpio_init()[%d]: bcm2835_spi_begin failed. Are you running as root?\n", __LINE__);
       bcm2835_close();
       return -1;
     }
@@ -98,10 +100,13 @@ int rpi_gpio_init(void)
     rpi_keyboard_reset();
     sleep(3);
 
-    /* Initialize GPIO for RPi test point
+    /* Initialize GPIO for RPi test point and motor-LED
      */
-    bcm2835_gpio_fsel(PRI_TEST_POINT, BCM2835_GPIO_FSEL_OUTP);
-    bcm2835_gpio_write(PRI_TEST_POINT, LOW);
+    bcm2835_gpio_fsel(TEST_POINT, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_write(TEST_POINT, LOW);
+
+    bcm2835_gpio_fsel(MOTOR_LED, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_write(MOTOR_LED, HIGH);
 
     /* Initialize 6-bit DAC, joystick comparator,
      * audio multiplexer control, and emulator reset GPIO lines
@@ -155,12 +160,12 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
         fbfd = open("/dev/fb0", O_RDWR);
         if (fbfd == -1)
         {
-            printf("rpi_fb_init()[%d]: Cannot open frame buffer /dev/fb0\n", __LINE__);
+            dbg_printf(0, "rpi_fb_init()[%d]: Cannot open frame buffer /dev/fb0\n", __LINE__);
             return 0;
         }
     }
 
-    printf("Frame buffer device is open\n");
+    dbg_printf(2, "Frame buffer device is open\n");
 
     if ( (int)(fbp = fb_set_resolution(fbfd, x_pix, y_pix)) == 0 )
     {
@@ -170,7 +175,7 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
     // Select graphics mode to hide cursor
     if ( fb_set_tty(1) )
     {
-        printf("rpi_fb_init()[%d]: Could not set tty0 mode.\n", __LINE__);
+        dbg_printf(0, "rpi_fb_init()[%d]: Could not set tty0 mode.\n", __LINE__);
         return 0;
     }
 
@@ -360,6 +365,37 @@ void rpi_enable(void)
 }
 
 /*------------------------------------------------
+ * rpi_motor_led_on()
+ *
+ *  Turn on motor LED indicator.
+ *
+ *  param:  Source of request disk=1 or tape=2
+ *  return: None
+ */
+void rpi_motor_led_on(uint8_t source)
+{
+    motor_led_ctrl |= source;
+    bcm2835_gpio_write(MOTOR_LED, LOW);
+}
+
+/*------------------------------------------------
+ * rpi_motor_led_off()
+ *
+ *  Turn off motor LED indicator.
+ *
+ *  param:  Source of request disk=1 or tape=2
+ *  return: None
+ */
+void rpi_motor_led_off(uint8_t source)
+{
+    motor_led_ctrl &= ~source;
+    if ( motor_led_ctrl == 0 )
+    {
+        bcm2835_gpio_write(MOTOR_LED, HIGH);
+    }
+}
+
+/*------------------------------------------------
  * rpi_testpoint_on()
  *
  *  Set test point to logic '1'
@@ -369,7 +405,7 @@ void rpi_enable(void)
  */
 void rpi_testpoint_on(void)
 {
-    bcm2835_gpio_write(PRI_TEST_POINT, HIGH);
+    bcm2835_gpio_write(TEST_POINT, HIGH);
 }
 
 /*------------------------------------------------
@@ -382,7 +418,7 @@ void rpi_testpoint_on(void)
  */
 void rpi_testpoint_off(void)
 {
-    bcm2835_gpio_write(PRI_TEST_POINT, LOW);
+    bcm2835_gpio_write(TEST_POINT, LOW);
 }
 
 /********************************************************************
@@ -395,7 +431,7 @@ void rpi_testpoint_off(void)
  */
 void rpi_halt(void)
 {
-    printf("HALT\n");
+    dbg_printf(0, "HALT\n");
     assert(0);
 }
 
@@ -434,7 +470,7 @@ static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
     // Get variable screen information
     if (ioctl(fbfd, FBIOGET_VSCREENINFO, &var_info))
     {
-        printf("fb_set_resolution()[%d]: Error reading variable screen info.\n", __LINE__);
+        dbg_printf(0, "fb_set_resolution()[%d]: Error reading variable screen info.\n", __LINE__);
         return 0L;
     }
 
@@ -445,31 +481,31 @@ static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
     var_info.yres_virtual = y_pix;
     if ( ioctl(fbfd, FBIOPUT_VSCREENINFO, &var_info) )
     {
-        printf("fb_set_resolution()[%d]: Error setting variable information.\n", __LINE__);
+        dbg_printf(0, "fb_set_resolution()[%d]: Error setting variable information.\n", __LINE__);
     }
 
-    printf("Display info: %dx%d, %d bpp\n",
+    dbg_printf(2, "Display info: %dx%d, %d bpp\n",
            var_info.xres, var_info.yres,
            var_info.bits_per_pixel);
 
     // Get fixed screen information
     if ( ioctl(fbfd, FBIOGET_FSCREENINFO, &fix_info) )
     {
-        printf("fb_set_resolution()[%d]: Error reading fixed information.\n", __LINE__);
+        dbg_printf(0, "fb_set_resolution()[%d]: Error reading fixed information.\n", __LINE__);
         return 0L;
     }
 
-    printf("Device ID: %s\n", fix_info.id);
+    dbg_printf(2, "Device ID: %s\n", fix_info.id);
 
     // map frame buffer to user memory
     screen_size = var_info.xres * var_info.yres_virtual * var_info.bits_per_pixel / 8;
     page_size = var_info.xres * var_info.yres;
 
-    printf("Screen_size=%ld, page_size=%d\n", screen_size, page_size);
+    dbg_printf(2, "Screen_size=%ld, page_size=%d\n", screen_size, page_size);
 
     if ( screen_size > fix_info.smem_len )
     {
-        printf("fb_set_resolution()[%d]: screen_size over buffer limit.\n", __LINE__);
+        dbg_printf(0, "fb_set_resolution()[%d]: screen_size over buffer limit.\n", __LINE__);
         return 0L;
     }
 
@@ -481,7 +517,7 @@ static uint8_t *fb_set_resolution(int fbh, int x_pix, int y_pix)
 
     if ( (int)fbp == -1 )
     {
-        printf("fb_set_resolution()[%d]: Failed to mmap()\n", __LINE__);
+        dbg_printf(0, "fb_set_resolution()[%d]: Failed to mmap()\n", __LINE__);
         return 0;
     }
 
@@ -506,7 +542,7 @@ static int fb_set_tty(const int mode)
 
     if ( !console_fd )
     {
-        printf("fb_set_tty()[%d]: Could not open console.\n", __LINE__);
+        dbg_printf(0, "fb_set_tty()[%d]: Could not open console.\n", __LINE__);
         return -1;
     }
 
@@ -514,7 +550,7 @@ static int fb_set_tty(const int mode)
     {
         if (ioctl( console_fd, KDSETMODE, KD_GRAPHICS))
         {
-            printf("fb_set_tty()[%d]: Could not set console to KD_GRAPHICS mode.\n", __LINE__);
+            dbg_printf(0, "fb_set_tty()[%d]: Could not set console to KD_GRAPHICS mode.\n", __LINE__);
             result = -1;
         }
     }
@@ -522,7 +558,7 @@ static int fb_set_tty(const int mode)
     {
         if (ioctl( console_fd, KDSETMODE, KD_TEXT))
         {
-            printf("fb_set_tty()[%d]: Could not set console to KD_TEXT mode.\n", __LINE__);
+            dbg_printf(0, "fb_set_tty()[%d]: Could not set console to KD_TEXT mode.\n", __LINE__);
             result = -1;
         }
     }

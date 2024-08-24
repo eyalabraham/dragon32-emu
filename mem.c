@@ -181,7 +181,7 @@ int  mem_define_io(int addr_start, int addr_end, io_handler_callback io_handler)
  *  return: ' 0' - write ok,
  *          '-1' - memory location is out of range
  */
-int mem_load(int addr_start, uint8_t *buffer, int length)
+int mem_load(int addr_start, const uint8_t *buffer, int length)
 {
     int i;
 

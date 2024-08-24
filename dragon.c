@@ -8,7 +8,10 @@
  *
  *******************************************************************/
 
-#include    "printf.h"
+#include    "trace.h"
+
+#include    "config.h"
+#include    "dbgmsg.h"
 
 #include    "mem.h"
 #include    "cpu.h"
@@ -20,12 +23,15 @@
 #include    "sam.h"
 #include    "vdg.h"
 #include    "pia.h"
+#include    "disk.h"
+#include    "fat32.h"
 #include    "loader.h"
 
 /* -----------------------------------------
    Dragon 32 ROM image
 ----------------------------------------- */
 #include    "dragon/dragon.h"
+#include    "dragon/ddos10p.h"
 
 /* -----------------------------------------
    Module definition
@@ -35,10 +41,19 @@
 #define     ESCAPE_LOADER           1       // Pressing F1
 #define     LONG_RESET_DELAY        1500000 // Micro-seconds to force cold start
 #if (RPI_BARE_METAL==1)
-  #define     VDG_RENDER_CYCLES     4500    // CPU cycle count for ~20mSec screen refresh rate
+  #define     VDG_RENDER_CYCLES     5625    // CPU cycle count for ~20mSec screen refresh rate
 #else
-  #define     VDG_RENDER_CYCLES     4450    // CPU cycle count for ~20mSec screen refresh rate
+  #define     VDG_RENDER_CYCLES     12500   // CPU cycle count for ~20mSec screen refresh rate
 #endif
+
+/********** Trace / Breakpoint **********/
+#if (RPI_BARE_METAL==0)
+cpu_state_t     cpu_state;
+cpu_run_state_t run_state;
+int             breakpoint_trigger = 0;
+uint16_t        breakpoint = 0xc179;        // 'DOSLowLevel' 0xc169 line #4024
+#endif
+/****************************************/
 
 /* -----------------------------------------
    Module functions
@@ -59,55 +74,57 @@ static int get_reset_state(uint32_t time);
     int     emulator_escape_code;
     int     vdg_render_cycles = 0;
 
-    printf("Dragon 32 %s %s\n", __DATE__, __TIME__);
-
-    /* ROM code load
-     */
-    printf("Loading ROM ... ");
-    i = 0;
-    while ( code[i] != -1 )
-    {
-        mem_write(i + LOAD_ADDRESS, code[i]);
-        i++;
-    }
-    printf("Loaded %i bytes.\n", i - 1);
-
-    mem_define_rom(DRAGON_ROM_START, DRAGON_ROM_END);
-
     /* System GPIO initialization
      */
     if ( rpi_gpio_init() == -1 )
     {
-        printf("GPIO failed to initialize. Halting\n");
+        dbg_printf(0, "GPIO failed to initialize. Halting\n");
         rpi_halt();
     }
     else
     {
-        printf("GPIO initialized.\n");
+        dbg_printf(2, "GPIO initialized.\n");
     }
     
     if ( (i = fat32_init()) != NO_ERROR )
     {
-        printf("FAT32 initialization failed (%d).\n", i);
+        dbg_printf(0, "FAT32 initialization failed (%d).\n", i);
     }
     else
     {
-        printf("FAT32 on SD initialized.\n");
+        dbg_printf(2, "FAT32 on SD initialized.\n");
     }
     
+    dbg_printf(0, "Dragon 32 %s %s\n", __DATE__, __TIME__);
+    dbg_printf(0, "Debug level = %d\n", DEBUG_LVL);
+
+    /* ROM code load
+     */
+    dbg_printf(1, "Loading ROM.\n");
+
+    mem_load(LOAD_ADDRESS, code, sizeof(code));
+    dbg_printf(2, "  Loaded Dragon 32, %i bytes.\n", sizeof(code));
+
+    mem_load(DDOS_LOAD_ADDRESS, ddos10p_code, sizeof(ddos10p_code));
+    dbg_printf(2, "  Loaded Dragon DOS 1.0p, %i bytes.\n", sizeof(ddos10p_code));
+
+    mem_define_rom(DRAGON_ROM_START, DRAGON_ROM_END);
+
     /* Emulation initialization
      */
-    printf("Initializing peripherals.\n");
+    dbg_printf(1, "Initializing peripherals.\n");
+    loader_init();
     sam_init();
     pia_init();
     vdg_init();
+    disk_init();
 
-    printf("Initializing CPU.\n");
+    dbg_printf(2, "Initializing CPU.\n");
     cpu_init(RUN_ADDRESS);
 
     /* CPU endless execution loop.
      */
-    printf("Starting CPU.\n");
+    dbg_printf(1, "Starting CPU.\n");
     cpu_reset(1);
 
     for (;;)
@@ -126,7 +143,7 @@ static int get_reset_state(uint32_t time);
                 /* Cold start flag set to value that is not 0x55
                  */
                 mem_write(0x71, 0);
-                printf("Force cold restart.\n");
+                dbg_printf(1, "Force cold restart.\n");
                 /* no break */
 
             case 1:
@@ -134,8 +151,10 @@ static int get_reset_state(uint32_t time);
                 break;
 
             default:
-                printf("ERROR: unknown reset state.\n");
+                dbg_printf(1, "Unknown reset state.\n");
         }
+
+        disk_io_interrupt();
 
         emulator_escape_code = pia_function_key();
         if ( emulator_escape_code == ESCAPE_LOADER )
@@ -150,6 +169,32 @@ static int get_reset_state(uint32_t time);
             pia_vsync_irq();
             vdg_render_cycles = 0;
         }
+        
+        /********** Trace / Breakpoint **********/
+#if (RPI_BARE_METAL==0)
+
+        run_state = cpu_get_state(&cpu_state);
+
+        if ( cpu_state.cpu_state == CPU_EXCEPTION )
+        {
+            dbg_printf(0, "Op-code Exception at pc=0x%04x last_pc=0x%04x\n", cpu_state.pc, cpu_state.last_pc);
+            breakpoint_trigger = 1;
+        }
+
+        //if ( cpu_state.pc == breakpoint )
+        if ( 0 )
+        {
+            breakpoint_trigger = 1;
+        }
+
+        if ( breakpoint_trigger )
+        {
+            trace_print_registers(&cpu_state);
+            breakpoint_trigger = trace_action(&breakpoint);
+        }
+        
+#endif
+        /****************************************/
     }
 
 #if (RPI_BARE_METAL==0)

@@ -17,7 +17,7 @@
  */
 typedef enum
 {
-    NOT_DEFINED     = -1,
+    CPU_UNDEFINED   = -1,
     CPU_EXEC        = 0,    // Normal state instruction execution
     CPU_HALTED      = 1,    // Is halted
     CPU_SYNC        = 2,    // Waiting in SYNC state (for 'sync' and 'cwai')

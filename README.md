@@ -9,47 +9,48 @@
 - [The DRAGON Archives](https://worldofdragon.org/index.php?title=Main_Page) resources and software.
 - [DRAGON Data archives](http://www.dragondata.co.uk/index.html) hardware schematics.
 - [Inside the Dragon](http://www.dragondata.co.uk/Publications/InsideTheDragon.pdf) by Duncan Smeed and Ian Sommerville.
+- [Dragon DOS patches, Dragon User magazine issues May/June/July 1985](https://colorcomputerarchive.com/repo/Documents/Magazines/Dragon%20User/). Reference "DRAGONDOS" in Dragon User [article index](https://archive.worldofdragon.org/images/7/7e/DragonUserIndex.pdf).
 - Computers based on 6809 [CoCo Coding](https://sites.google.com/a/aaronwolfe.com/cococoding/home)
 - [RPi BCM2835 GPIOs](https://elinux.org/RPi_BCM2835_GPIOs)
 - [C library for Broadcom BCM 2835](https://www.airspayce.com/mikem/bcm2835/)
 
 ## Design
 
-The CPU module is ```cpu.c```, the memory module is ```mem.c```. The IO module is implemented as call-back functions hooked through the memory module to selected memory addresses, and emulate the response of a memory mapper IO device. The IO module call-backs implement the various IO device in the emulated computer. This design is flexible enough to allow the definition of any computer configuration, memory and IO, built around an MC6809 CPU. The examples and development steps show an [SWTPC computer](https://en.wikipedia.org/wiki/SWTPC) and [Grant's 6-chip 6809 computer](http://searle.x10host.com/6809/Simple6809.html) as two instances I used along the way.  
+The CPU module is ```cpu.c```, the memory module is ```mem.c```. The IO module is implemented as call-back functions hooked through the memory module to selected memory addresses, and emulate the response of a memory mapper IO device. The IO module call-backs implement the various IO device in the emulated computer. This design is flexible enough to allow the definition of any computer configuration, memory and IO, built around an MC6809 CPU.  
   
-The emulation will not all be done through software. In order to save time some IO devices will be implemented in hardware: keyboard interface (possibly PS2 through the Pi's SPI), audio DAC and an analog comparator for a successive approximation ADC that will reproduce sound and support an **original** (circa 1984) Dragon Computer joystick.  
+The emulator will also be implemented with hardware: keyboard interface (PS2 through the Pi's SPI), audio DAC, and an analog comparator for a successive approximation ADC that will reproduce sound and support an **original** (circa 1984) Dragon Computer joystick.  
 
 ASCII art depiction of the system for the RPi bare metal implementation:
 
 ```
-  +-------------------------------------+         |
-  | Monitor (via Auxiliary UART)        |         |
-  |  Logger                             |         |
-  |  Monitor CLI                        |         |
-  +-------------------------------------+         |
-     |          |                |                |
-  +-----+  +----------+  +--------------+  Software emulation
-  | CPU |--|   MEM    |--|      IO      |         |
-  +-----+  +----------+  |              |         |
-                |        |              |         |
-           +----------+  |       |      |         |
-           | Graphics |  | SAM   | PIA  |         |
-           | xlate    |--| VGD   |      |         |
-           +----------+  +-------+------+         |
-                |                    |          ------
-           +----------+          +------+         |
-           | RPi      |          | RPi  |         |
-           | frame    |          | GPIO |      RPi HW
-           | buff     |          |      |         |
-           +----------+          +------+         |
-                 |                   |          ------
-           +----------+      +---------------+    |
-           | VGA      |      | Devices:      |    |
-           | Monitor  |      |  PS2 Keyboard |  External HW
-           +----------+      |  Joystick     |    |
-                             |  Audio DAC    |    |
-                             |  SD card      |    |
-                             +---------------+    |
+  +-------------------------------------+               |
+  | Monitor (via Auxiliary UART)        |               |
+  |  Logger                             |               |
+  |  Monitor CLI                        |               |
+  +-------------------------------------+               |
+     |          |                |                      |
+  +-----+  +----------+  +---------------------+ Software emulation
+  | CPU |--|   MEM    |--|          IO         |        |
+  +-----+  +----------+  |                     |        |
+                |        |                     |        |
+           +----------+  |       |      |      |        |
+           | Graphics |  | SAM   | PIA  | Disk |        |
+           | xlate    |--| VGD   |      |      |        |
+           +----------+  +-------+-------------+        |
+                |                    |                ------
+           +----------+          +------+               |
+           | RPi      |          | RPi  |               |
+           | frame    |          | GPIO |            RPi HW
+           | buff     |          |      |               |
+           +----------+          +------+               |
+                 |                   |                ------
+           +----------+      +---------------+          |
+           | VGA      |      | Devices:      |          |
+           | Monitor  |      |  PS2 Keyboard |      External HW
+           +----------+      |  Joystick     |          |
+                             |  Audio DAC    |          |
+                             |  SD card      |          |
+                             +---------------+          |
 ```
 
 ## Schematics
@@ -171,63 +172,17 @@ VDG rendering routine takes advantage of 32-bit architecture of the RPi frame-bu
 | Graphics 192x128 C  (PMODE 3) | 49,152              | 3.15 mSec | 3.60 mSec    |
 | Graphics 256x192 BW (PMODE 4) | 49,152              | 3.30 mSec | worse        |
 
-### Emulator main loop performance improvements
+#### WD2797 floppy disk controller
 
-The main loop of the emulator is responsible for five tasks: execute CPU machine code from program memory, check state of reset button, check state of F1 function key for emulation escape, render video memory to RPi frame buffer, and generate VSYNC IRQ at 50Hz.  
+WD2797 floppy disk controller and Dragon DOS ROM provides full emulation for using Dragon Dos formatted disk images loaded on SD card. Disk image loader supports the .VDK disk image format and loads disks using the loader sub-program accessible by escaping the emulation using the keyboard F1 key.  
+The emulation supports a single drive. Single side, 40 tracks with 18 sectors per track, and a track size of 256 bytes.  
 
-Originally, the emulation produced distorted audio that I attributed to the average 3mSec pause at a 50Hz rate of the frame buffer updates done by vdg_render(). After measuring the emulation loop I discovered that the loop takes ~12uSec to complete, but the cpu_run() function completes at an average of 1uSec. This means that the emulator is running at a slow 300KHz equivalent CPU, and since audio is directly produced by CPU writes to the DAC this produced distorted audio. Most of the 12uSec interval is spent by vdg_render() and pia_vsync_irq() that were timed at about 4.8uSec each due to calls to clock() to retrieve system clock tick count.  
-
-The change removed all calls to clock() and the 50Hz execution trigger of vdg_render() and pia_vsync_irq() is brute-forced by a simple counting cycles. Since each cpu_run() completes at an average time of 1uSec, adding the extra functions now extends the emulation loop to about 1.5uSec. The MC6809E CPU executes machine code utilizing an average of 3 to 4 clock cycles, so the emulation is now equivalent to about 3x faster than a real CPU, and a slow down empty loop is added to waste time and extend the loop up to about 4uSec total.  
-
-Video is refreshed approximately every 20mSec (50Hz). The average 3mSec pause in CPU execution every 20mSec adds a 50Hz undertone that is largely filtered by the high-pass at the audio DAC output.  
-
-The new emulator loop includes CPU execution (line 95), dead-time padding (line 99), test reset button state (lines 101 to 120), emulation escape (lines 122 to 124), vdg_render() and pia_vsync_irq() timing to match 50Hz (lines 126 to 131).  
-
-```
- 91    for (;;)
- 92    {
- 93        rpi_testpoint_on();
- 94
- 95        cpu_run();
- 96
- 97        rpi_testpoint_off();
- 98
- 99        for ( i = 0; i < CPU_TIME_WASTE; i++);
-100
-101        switch ( get_reset_state(LONG_RESET_DELAY) )
-102        {
-103            case 0:
-104                cpu_reset(0);
-105                break;
-106
-107            case 2:
-108                /* Cold start flag set to value that is not 0x55
-109                 */
-110                mem_write(0x71, 0);
-111                printf("Force cold restart.\n");
-112                /* no break */
-113
-114            case 1:
-115                cpu_reset(1);
-116                break;
-117
-118            default:
-119                printf("main(): unknown reset state.\n");
-120        }
-121
-122        emulator_escape_code = pia_function_key();
-123        if ( emulator_escape_code == ESCAPE_LOADER )
-124            loader();
-125
-126        vdg_render_cycles++;
-127        if ( vdg_render_cycles == VDG_RENDER_CYCLES )
-128        {
-129            vdg_render();
-130            pia_vsync_irq();
-131            vdg_render_cycles = 0;
-132        }
-133    }
-```
+resources:  
+- WD2797 floppy disk controller data sheet
+- Dragon DOS programmer's guide, Grosvenor Software 1985
+- Dragon DOS cartridge schematics
+- Dragon DOS source code and ROM iamges https://github.com/prime6809/DragonDOS
+- https://worldofdragon.org/index.php?title=Tape%5CDisk_Preservation#JVC.2FDSK_File_Format
 
 #### 6821 parallel IO (PIA)
 
@@ -288,14 +243,68 @@ ROM code files are loaded as-is into the Dragon's ROM cartridge memory address s
 
 CAS files are digital images of old-style tape content and not memory images. More on [CAS file formats here](https://retrocomputing.stackexchange.com/questions/150/what-format-is-used-for-coco-cassette-tapes/153#153), and [Dragon 32 CAS format here](https://archive.worldofdragon.org/index.php?title=Tape%5CDisk_Preservation#CAS_File_Format). A cassette file can be mounted by the loader (like loading a cassette into a tape player), and then use the BASIC CLOAD or CLOADM commands to do the reading.
 
+### Emulator main loop performance improvements
+
+The main loop of the emulator is responsible for five tasks: execute CPU machine code from program memory, check state of reset button, check state of F1 function key for emulation escape, render video memory to RPi frame buffer, and generate VSYNC IRQ at 50Hz.  
+
+Originally, the emulation produced distorted audio that I attributed to the average 3mSec pause at a 50Hz rate of the frame buffer updates done by vdg_render(). After measuring the emulation loop I discovered that the loop takes ~12uSec to complete, but the cpu_run() function completes at an average of 1uSec. This means that the emulator is running at a slow 300KHz equivalent CPU, and since audio is directly produced by CPU writes to the DAC this produced distorted audio. Most of the 12uSec interval is spent by vdg_render() and pia_vsync_irq() that were timed at about 4.8uSec each due to calls to clock() to retrieve system clock tick count.  
+
+The change removed all calls to clock() and the 50Hz execution trigger of vdg_render() and pia_vsync_irq() is brute-forced by a simple counting cycles. Since each cpu_run() completes at an average time of 1uSec, adding the extra functions now extends the emulation loop to about 1.5uSec. The MC6809E CPU executes machine code utilizing an average of 3 to 4 clock cycles, so the emulation is now equivalent to about 3x faster than a real CPU, and a slow down empty loop is added to waste time and extend the loop up to about 4uSec total.  
+
+Video is refreshed approximately every 20mSec (50Hz). The average 3mSec pause in CPU execution every 20mSec adds a 50Hz undertone that is largely filtered by the high-pass at the audio DAC output.  
+
+The new emulator loop includes CPU execution (line 95), dead-time padding (line 99), test reset button state (lines 101 to 120), emulation escape (lines 122 to 124), vdg_render() and pia_vsync_irq() timing to match 50Hz (lines 126 to 131).  
+
+```
+ 91    for (;;)
+ 92    {
+ 93        rpi_testpoint_on();
+ 94
+ 95        cpu_run();
+ 96
+ 97        rpi_testpoint_off();
+ 98
+ 99        for ( i = 0; i < CPU_TIME_WASTE; i++);
+100
+101        switch ( get_reset_state(LONG_RESET_DELAY) )
+102        {
+103            case 0:
+104                cpu_reset(0);
+105                break;
+106
+107            case 2:
+108                /* Cold start flag set to value that is not 0x55
+109                 */
+110                mem_write(0x71, 0);
+111                dbg_printf("Force cold restart.\n");
+112                /* no break */
+113
+114            case 1:
+115                cpu_reset(1);
+116                break;
+117
+118            default:
+119                dbg_printf("main(): unknown reset state.\n");
+120        }
+121
+122        emulator_escape_code = pia_function_key();
+123        if ( emulator_escape_code == ESCAPE_LOADER )
+124            loader();
+125
+126        vdg_render_cycles++;
+127        if ( vdg_render_cycles == VDG_RENDER_CYCLES )
+128        {
+129            vdg_render();
+130            pia_vsync_irq();
+131            vdg_render_cycles = 0;
+132        }
+133    }
+```
+
 ### TODOs
 
-- Cartridge interrupt for cartridge code auto start
-- Dragon Disk system (DOS)
-- Disk, Cassette. access LED
+- System reset (reset function for all peripherals, link to cpu_reset() etc.)
 - Serial console for monitoring execution state
-- Settable logging to serial console
-- Exception generation, example: writing to a memory location that is defines as ROM.
 - Dragon sound sources: single bit in io_handler_pia1_pb() pia.c module
 
 ### Known problems
@@ -307,14 +316,13 @@ CAS files are digital images of old-style tape content and not memory images. Mo
 ```
 .
 ├── bin
+│   └── <empty>
 ├── boot
-│   ├── bootcode.bin
-│   ├── config.txt
-│   ├── fixup.dat
-│   ├── kernel.img
-│   └── start.elf
+│   └── <empty>
 ├── include
 │   ├── dragon
+│   │   ├── ddos10.h
+│   │   ├── ddos10p.h
 │   │   ├── dragon.h
 │   │   ├── font.h
 │   │   └── semigraph.h
@@ -333,17 +341,19 @@ CAS files are digital images of old-style tape content and not memory images. Mo
 │   │   └── uart.h
 │   ├── config.h
 │   ├── cpu.h
+│   ├── disk.h
 │   ├── errors.h
 │   ├── fat32.h
 │   ├── loader.h
 │   ├── mc6809e.h
 │   ├── mem.h
 │   ├── pia.h
+│   ├── rpi.h
 │   ├── printf_config.h
 │   ├── printf.h
-│   ├── rpi.h
 │   ├── sam.h
 │   ├── sd.h
+│   ├── trace.h
 │   └── vdg.h
 ├── rpi-bm
 │   ├── auxuart.c
@@ -357,25 +367,27 @@ CAS files are digital images of old-style tape content and not memory images. Mo
 │   ├── spi0.c
 │   ├── spi1.c
 │   ├── start.S
-│   ├── timer.c
-│   └── vdg.h
+│   └── timer.c
 ├── rpi-linux
 │   ├── Makefile
 │   ├── rpi.c
 │   ├── spiaux.c
 │   └── uart.c
-├── README.md
 ├── LICENSE.md
-├── Makefile
-├── dragon.c
+├── README.md
 ├── cpu.c
-├── mem.c
-├── loader.c
-├── printf.c
-├── sd.c
+├── disk.c
+├── dragon.c
+├── DragonDOS-info.txt
 ├── fat32.c
+├── loader.c
+├── Makefile
+├── mem.c
 ├── pia.c
+├── printf.c
 ├── sam.c
+├── sd.c
+├── trace.c
 └── vdg.c
 
 ```

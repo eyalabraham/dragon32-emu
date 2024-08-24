@@ -15,9 +15,8 @@
 #include    "mem.h"
 #include    "vdg.h"
 #include    "pia.h"
-#include    "fat32.h"
 #include    "loader.h"
-#include    "printf.h"
+#include    "dbgmsg.h"
 
 /* -----------------------------------------
    Local definitions
@@ -49,6 +48,7 @@
 #define     AUDIO_MUX_OTHER     3       // Off
 
 #define     MOTOR_ON            0b00001000
+#define     CA2_SET_CLR         0b00110000
 #define     BIT_THRESHOLD_HI    4
 #define     BIT_THRESHOLD_LO    20
 
@@ -61,6 +61,7 @@ static uint8_t io_handler_pia0_pa(uint16_t address, uint8_t data, mem_operation_
 static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia0_cra(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia0_crb(uint16_t address, uint8_t data, mem_operation_t op);
+
 static uint8_t io_handler_pia1_pa(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia1_pb(uint16_t address, uint8_t data, mem_operation_t op);
 static uint8_t io_handler_pia1_cra(uint16_t address, uint8_t data, mem_operation_t op);
@@ -72,16 +73,8 @@ static uint8_t get_keyboard_row_scan(uint8_t data);
    Module globals
 ----------------------------------------- */
 static int     pia0_cb1_int_enabled = 0;
-static uint8_t pia0_cra = 0;
-static uint8_t pia0_crb = 0;
-static uint8_t pia1_cra = 0;
-static uint8_t pia1_crb = 0;
-
+static int     pia1_cb1_int_enabled = 0;
 static uint8_t audio_mux_select = AUDIO_MUX_OTHER;
-
-static dir_entry_t  cas_file;
-static file_param_t file;
-
 static int     function_key = 0;
 
 /*
@@ -216,29 +209,55 @@ void pia_init(void)
     mem_define_io(PIA1_PB, PIA1_PB, io_handler_pia1_pb);    // VDG mode bits output
     mem_define_io(PIA1_CRA, PIA1_CRA, io_handler_pia1_cra); // Cassette tape motor control
     mem_define_io(PIA1_CRB, PIA1_CRB, io_handler_pia1_crb); // Audio multiplexer select bit.1
-
-    memset(&cas_file, 0, sizeof(dir_entry_t));
-    memset(&file, 0, sizeof(file_param_t));
 }
 
 /*------------------------------------------------
- * pia_hsync_irq()
+ * pia_vsync_irq()
  *
- *  Assert an IRQ interrupt to signal Field Sync refresh.
- *  This function should be called periodically from the VDG
- *  rendering function.
+ *  Assert an external interrupt from the VDG Field Sync line (V-Sync)
+ *  through PIA0-CB1 that geterates an IRQ interrupt.
  *
  *  param:  Nothing
  *  return: Nothing
  */
 void pia_vsync_irq(void)
 {
+    uint8_t temp;
+
     /* Assert interrupt if enabled
      */
     if ( pia0_cb1_int_enabled )
     {
-        pia0_crb |= PIA_CR_IRQ_STAT;
+        temp = mem_read(PIA0_CRB);
+        temp |= PIA_CR_IRQ_STAT;
+        mem_write(PIA0_CRB, temp);
+
         cpu_irq(1);
+    }
+}
+
+/*------------------------------------------------
+ * pia_cart_firq()
+ *
+ *  Assert an external interrupt from the Expansion Cartridge
+ *  through PIA1-CB1 that geterates an FIRQ interrupt (e,g, Dragon DOS disk system).
+ *
+ *  param:  Nothing
+ *  return: Nothing
+ */
+void pia_cart_firq(void)
+{
+    uint8_t temp;
+
+    /* Assert interrupt if enabled
+     */
+    if ( pia1_cb1_int_enabled )
+    {
+        temp = mem_read(PIA1_CRB);
+        temp |= PIA_CR_IRQ_STAT;
+        mem_write(PIA1_CRB, temp);
+
+        cpu_firq(1);
     }
 }
 
@@ -316,6 +335,7 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
 {
     uint8_t scan_code = 0;
     uint8_t row_switch_bits;
+    uint8_t temp;
     int     row_index;
 
     /* Activate the call back to read keyboard scan code from
@@ -345,7 +365,7 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
              */
             if ( (row_index = scan_code_table[(scan_code & 0x7f)][1]) == 255 )
             {
-                printf("io_handler_pia0_pb()[%d]: Illegal scan code.\n", __LINE__);
+                dbg_printf(0, "io_handler_pia0_pb()[%d]: Illegal scan code.\n", __LINE__);
                 rpi_halt();
             }
 
@@ -381,7 +401,10 @@ static uint8_t io_handler_pia0_pb(uint16_t address, uint8_t data, mem_operation_
      */
     else
     {
-        pia0_crb &= ~PIA_CR_IRQ_STAT;
+        temp = mem_read(PIA0_CRB);
+        temp &= ~PIA_CR_IRQ_STAT;
+        mem_write(PIA0_CRB, temp);
+
         cpu_irq(0);
     }
 
@@ -401,9 +424,7 @@ static uint8_t io_handler_pia0_cra(uint16_t address, uint8_t data, mem_operation
 {
     if ( op == MEM_WRITE )
     {
-        pia0_cra = data;
-
-        if ( (pia0_cra & PIACR_CAB2_MASK) == PIACR_CAB2_SET )
+        if ( (data & PIACR_CAB2_MASK) == PIACR_CAB2_SET )
             audio_mux_select |= 0x01;
         else
             audio_mux_select &= 0xfe;
@@ -411,7 +432,7 @@ static uint8_t io_handler_pia0_cra(uint16_t address, uint8_t data, mem_operation
         rpi_audio_mux_set((int) audio_mux_select);
     }
 
-    return pia0_cra;
+    return data;
 }
 
 /*------------------------------------------------
@@ -427,15 +448,13 @@ static uint8_t io_handler_pia0_crb(uint16_t address, uint8_t data, mem_operation
 {
     if ( op == MEM_WRITE )
     {
-        pia0_crb = data;
-
-        if ( pia0_crb & PIA_CR_INTR )
+        if ( data & PIA_CR_INTR )
             pia0_cb1_int_enabled = 1;
         else
             pia0_cb1_int_enabled = 0;
     }
 
-    return pia0_crb;
+    return data;
 }
 
 /*------------------------------------------------
@@ -481,7 +500,7 @@ static uint8_t io_handler_pia1_pa(uint16_t address, uint8_t data, mem_operation_
          */
         if ( bit_index == 0 )
         {
-            cas_eof = !fat32_fread(&file, &byte, 1);
+            cas_eof = !loader_cas_fread(&byte, 1);
 
             bit_index = 9;
             bit_timing_threshold = 0;
@@ -539,13 +558,32 @@ static uint8_t io_handler_pia1_pa(uint16_t address, uint8_t data, mem_operation_
  *  Bit 2   I   Ram Size (1=16k 0=32/64k), not implemented
  *  Bit 1   I   Single bit sound
  *  Bit 0   I   Rs232 In / Printer Busy, not implemented
+ * 
+ *  A read resets FIRQ request output.
  *
  *  param:  Call address, data byte for write operation, and operation type
  *  return: Status or data byte
  */
 static uint8_t io_handler_pia1_pb(uint16_t address, uint8_t data, mem_operation_t op)
 {
-    vdg_set_mode_pia(((data >> 3) & 0x1f));
+    uint8_t temp;
+
+    if ( op == MEM_WRITE )
+    {
+        vdg_set_mode_pia(((data >> 3) & 0x1f));
+    }
+
+    /* A read to the port address has the effect of resetting
+     * the IRQ status line
+     */
+    else
+    {
+        temp = mem_read(PIA1_CRB);
+        temp &= ~PIA_CR_IRQ_STAT;
+        mem_write(PIA1_CRB, temp);
+
+        cpu_firq(0);
+    }
 
     return data;
 }
@@ -561,49 +599,30 @@ static uint8_t io_handler_pia1_pb(uint16_t address, uint8_t data, mem_operation_
  */
 static uint8_t io_handler_pia1_cra(uint16_t address, uint8_t data, mem_operation_t op)
 {
-    static char fname[13] = { 0 };
-
     if ( op == MEM_WRITE )
     {
-        pia1_cra = data;
-
-        if ( data & 0b00110000 )
+        if ( data & CA2_SET_CLR )
         {
             if ( data & MOTOR_ON )
             {
-                /* If the motor is turned on then get the mounted CAS file.
-                 * If the file is different then the previous file, then first close
-                 * and then open the new file.
-                 */
-                if ( loader_mount_cas_file(&cas_file) )
-                {
-                    if ( strncmp(fname, cas_file.sfn, sizeof(fname)) != 0 )
-                    {
-                        fat32_fclose(&file);
-
-                        strncpy(fname, cas_file.sfn, sizeof(fname));
-                        fat32_fopen(&cas_file, &file);
-                        printf("Opened CAS file for reading (%s).\n", fname);
-                    }
-                }
+                rpi_motor_led_on(MOTOR_LED_TAPE);
             }
             else
             {
-                /* Motor-off.
-                 * Handling file closure with some logic above.
-                 */
+                rpi_motor_led_off(MOTOR_LED_TAPE);
             }
         }
     }
 
-    return pia1_cra;
+    return data;
 }
 
 /*------------------------------------------------
  * io_handler_pia1_crb()
  *
  *  IO call-back handler 0xFF23 PIA1-B Control register
- *  responding the audio multiplexer select bits
+ *  responding the audio multiplexer select bits, and
+ *  PIA1-CRB1 interrupt enable/disable.
  *
  *  param:  Call address, data byte for write operation, and operation type
  *  return: Status or data byte
@@ -612,9 +631,12 @@ static uint8_t io_handler_pia1_crb(uint16_t address, uint8_t data, mem_operation
 {
     if ( op == MEM_WRITE )
     {
-        pia1_crb = data;
+        if ( data & PIA_CR_INTR )
+            pia1_cb1_int_enabled = 1;
+        else
+            pia1_cb1_int_enabled = 0;
 
-        if ( (pia1_crb & PIACR_CAB2_MASK) == PIACR_CAB2_SET )
+        if ( (data & PIACR_CAB2_MASK) == PIACR_CAB2_SET )
             audio_mux_select |= 0x02;
         else
             audio_mux_select &= 0xfd;
@@ -622,7 +644,7 @@ static uint8_t io_handler_pia1_crb(uint16_t address, uint8_t data, mem_operation
         rpi_audio_mux_set((int) audio_mux_select);
     }
 
-    return pia1_crb;
+    return data;
 }
 
 /*------------------------------------------------

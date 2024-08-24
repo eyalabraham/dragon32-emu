@@ -17,7 +17,7 @@
 #include    "mem.h"
 #include    "vdg.h"
 #include    "rpi.h"
-#include    "printf.h"
+#include    "dbgmsg.h"
 
 #include    "dragon/font.h"
 #include    "dragon/semigraph.h"
@@ -25,8 +25,6 @@
 /* -----------------------------------------
    Local definitions
 ----------------------------------------- */
-#define     VDG_REFRESH_INTERVAL    ((uint32_t)(1000000/50))
-
 #define     SCREEN_WIDTH_PIX        256
 #define     SCREEN_HEIGHT_PIX       192
 
@@ -84,8 +82,8 @@ typedef enum
     GRAPHICS_2C,        // 4 color  128x64  1536
     GRAPHICS_2R,        // 2 color  128x96  1536   PMODE0
     GRAPHICS_3C,        // 4 color  128x96  3072   PMODE1
-    GRAPHICS_3R,        // 2 color  128x192 3072   PMODE2
-    GRAPHICS_6C,        // 4 color  128x192 6144   PMODE3
+    GRAPHICS_3R,        // 2 color  192x128 3072   PMODE2
+    GRAPHICS_6C,        // 4 color  192x128 6144   PMODE3
     GRAPHICS_6R,        // 2 color  256x192 6144   PMODE4
     DMA,                // 2 color  256x192 6144
     UNDEFINED,          // Undefined
@@ -123,8 +121,8 @@ static int const resolution[][3] = {
     { 128,  64, 2048                            },  // GRAPHICS_2C, 4 color 128x64 2048B
     { 128,  96, 1536                            },  // GRAPHICS_2R, 2 color 128x96 1536B PMODE 0
     { 128,  96, 3072                            },  // GRAPHICS_3C, 4 color 128x96 3072B PMODE 1
-    { 256, 192, 3072                            },  // GRAPHICS_3R, 2 color 128x192 3072B PMODE 2
-    { 256, 192, 6144                            },  // GRAPHICS_6C, 4 color 128x192 6144B PMODE 3
+    { 256, 192, 3072                            },  // GRAPHICS_3R, 2 color 192x128 3072B PMODE 2
+    { 256, 192, 6144                            },  // GRAPHICS_6C, 4 color 192x128 6144B PMODE 3
     { 256, 192, 6144                            },  // GRAPHICS_6R, 2 color 256x192 6144B PMODE 4
     { 256, 192, 6144                            },  // DMA, 2 color 256x192 6144B
 };
@@ -183,7 +181,7 @@ void vdg_init(void)
     fbp = rpi_fb_init(SCREEN_WIDTH_PIX, SCREEN_HEIGHT_PIX);
     if ( fbp == 0L )
     {
-        printf("vdg_init()[%]: Frame buffer error.\n", __LINE__);
+        dbg_printf(0, "vdg_init()[%d]: Frame buffer error.\n", __LINE__);
         rpi_halt();
     }
 
@@ -223,13 +221,13 @@ void vdg_render(void)
         fbp = rpi_fb_resolution(resolution[current_mode][RES_HORZ_PIX], resolution[current_mode][RES_VERT_PIX]);
         if ( fbp == 0L )
         {
-            printf("vdg_render()[%d]: Frame buffer error.\n", __LINE__);
+            dbg_printf(0, "vdg_render()[%d]: Frame buffer error.\n", __LINE__);
             rpi_halt();
         }
 
         prev_mode = current_mode;
 
-        printf("VDG mode: %s\n", mode_name[current_mode]);
+        dbg_printf(2, "VDG mode: %s\n", mode_name[current_mode]);
     }
 
     /* Render screen content to RPi frame buffer
@@ -331,13 +329,13 @@ void vdg_render(void)
         case SEMI_GRAPHICS_24:
         case ALPHA_EXTERNAL:
         case DMA:
-            printf("vdg_render()[%d]: Mode not supported %d\n", __LINE__, current_mode);
+            dbg_printf(0, "vdg_render()[%d]: Mode not supported %d\n", __LINE__, current_mode);
             rpi_halt();
             break;
 
         default:
             {
-                printf("vdg_render()[%d]: Illegal mode.\n", __LINE__);
+                dbg_printf(0, "vdg_render()[%d]: Illegal mode.\n", __LINE__);
                 rpi_halt();
             }
     }
@@ -717,7 +715,7 @@ static void vdg_draw_semig_ext(video_mode_t mode, int video_mem_base, int text_b
                 if ( byte_position == 24 )
                 {
                     frame_buffer_index = (px + char_col - 3) + (py + (char_row * SCREEN_WIDTH_PIX));
-                    //printf("px %u, py %u, frame_buffer_index %u, char_col %d, char_row %d\n", px, py, frame_buffer_index, char_col, char_row);
+                    //dbg_printf(0, "px %u, py %u, frame_buffer_index %u, char_col %d, char_row %d\n", px, py, frame_buffer_index, char_col, char_row);
                     *((uint32_t *)(fbp + frame_buffer_index)) = pixel_group;
                     byte_position = 0;
                     pixel_group = 0;
@@ -821,7 +819,7 @@ static video_mode_t vdg_get_mode(void)
     }
     else
     {
-        printf("vdg_get_mode()[%d]: Cannot resolve mode.\n", __LINE__);
+        dbg_printf(0, "vdg_get_mode()[%d]: Cannot resolve mode.\n", __LINE__);
         rpi_halt();
     }
 

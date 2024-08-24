@@ -18,7 +18,7 @@
 #include    "rpi-bm/spi1.h"
 #include    "rpi-bm/mailbox.h"
 #include    "rpi-bm/irq.h"
-#include    "printf.h"
+#include    "dbgmsg.h"
 #include    "rpi.h"
 
 /* -----------------------------------------
@@ -26,7 +26,8 @@
 ----------------------------------------- */
 // AVR and keyboard
 #define     AVR_RESET           RPI_V2_GPIO_P1_11
-#define     PRI_TEST_POINT      RPI_V2_GPIO_P1_07
+#define     TEST_POINT          RPI_V2_GPIO_P1_07
+#define     MOTOR_LED           RPI_V2_GPIO_P1_12
 
 // Miscellaneous IO
 #define     EMULATOR_RESET      RPI_V2_GPIO_P1_29
@@ -64,6 +65,7 @@ typedef struct
 /* -----------------------------------------
    Module globals
 ----------------------------------------- */
+static uint8_t      motor_led_ctrl = 0;     // Holds the source and state of LED
 static var_info_t   var_info;
 
 /* Palette for 8-bpp color depth.
@@ -107,7 +109,7 @@ static uint32_t     palette_bgr[] =
 int rpi_gpio_init(void)
 {
     /* Initialize auxiliary UART for console output.
-     * Safe to continue with system bring-up even if UART failed?
+     * Safe to continue with system bring-up even if UART failed.
      */
     bcm2835_auxuart_init(DEFAULT_UART_RATE, 100, 100, AUXUART_DEFAULT);
 
@@ -115,7 +117,7 @@ int rpi_gpio_init(void)
      */
     if ( !bcm2835_spi0_init(SPI0_DEFAULT) )
     {
-      printf("rpi_gpio_init(): bcm2835_spi_init() failed.\n");
+      dbg_printf(0, "rpi_gpio_init(): bcm2835_spi_init() failed.\n");
       return -1;
     }
 
@@ -129,10 +131,13 @@ int rpi_gpio_init(void)
     rpi_keyboard_reset();
     bcm2835_st_delay(3000000);
 
-    /* Initialize GPIO for RPi test point
+    /* Initialize GPIO for RPi test point and motor-LED
      */
-    bcm2835_gpio_fsel(PRI_TEST_POINT, BCM2835_GPIO_FSEL_OUTP);
-    bcm2835_gpio_clr(PRI_TEST_POINT);
+    bcm2835_gpio_fsel(TEST_POINT, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_clr(TEST_POINT);
+
+    bcm2835_gpio_fsel(MOTOR_LED, BCM2835_GPIO_FSEL_OUTP);
+    bcm2835_gpio_set(MOTOR_LED);
 
     /* Initialize 6-bit DAC, joystick comparator,
      * audio multiplexer control, and emulator reset GPIO lines
@@ -187,7 +192,7 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
     bcm2835_mailbox_add_tag(TAG_FB_GET_PITCH);
     if ( !bcm2835_mailbox_process() )
     {
-        printf("rpi_fb_init(): bcm2835_mailbox_process() failed.\n");
+        dbg_printf(0, "rpi_fb_init(): bcm2835_mailbox_process() failed.\n");
         return 0;
     }
 
@@ -201,7 +206,7 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
     }
     else
     {
-        printf("rpi_fb_init(): TAG_FB_ALLOCATE failed.\n");
+        dbg_printf(0, "rpi_fb_init(): TAG_FB_ALLOCATE failed.\n");
         return 0;
     }
 
@@ -217,7 +222,7 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
     }
     else
     {
-        printf("rpi_fb_init(): TAG_FB_SET_PHYS_DISPLAY failed.\n");
+        dbg_printf(0, "rpi_fb_init(): TAG_FB_SET_PHYS_DISPLAY failed.\n");
         return 0;
     }
 
@@ -228,12 +233,12 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
     }
     else
     {
-        printf("rpi_fb_init(): TAG_FB_GET_PITCH failed\n");
+        dbg_printf(0, "rpi_fb_init(): TAG_FB_GET_PITCH failed\n");
         return 0;
     }
 
-    printf("Frame buffer device is open:\n");
-    printf("  x_pix=%d, y_pix=%d, screen_size=%d, page_size=%d\n",
+    dbg_printf(2, "Frame buffer device is open:\n");
+    dbg_printf(2, "  x_pix=%d, y_pix=%d, screen_size=%d, page_size=%d\n",
                        x_pix, y_pix, screen_size, page_size);
 
     return fbp;
@@ -426,6 +431,37 @@ void rpi_enable(void)
 }
 
 /*------------------------------------------------
+ * rpi_motor_led_on()
+ *
+ *  Turn on motor LED indicator.
+ *
+ *  param:  Source of request disk=1 or tape=2
+ *  return: None
+ */
+void rpi_motor_led_on(uint8_t source)
+{
+    motor_led_ctrl |= source;
+    bcm2835_gpio_clr(MOTOR_LED);
+}
+
+/*------------------------------------------------
+ * rpi_motor_led_off()
+ *
+ *  Turn off motor LED indicator.
+ *
+ *  param:  Source of request disk=1 or tape=2
+ *  return: None
+ */
+void rpi_motor_led_off(uint8_t source)
+{
+    motor_led_ctrl &= ~source;
+    if ( motor_led_ctrl == 0 )
+    {
+        bcm2835_gpio_set(MOTOR_LED);
+    }
+}
+
+/*------------------------------------------------
  * rpi_testpoint_on()
  *
  *  Set test point to logic '1'
@@ -435,7 +471,7 @@ void rpi_enable(void)
  */
 void rpi_testpoint_on(void)
 {
-    bcm2835_gpio_set(PRI_TEST_POINT);
+    bcm2835_gpio_set(TEST_POINT);
 }
 
 /*------------------------------------------------
@@ -448,22 +484,26 @@ void rpi_testpoint_on(void)
  */
 void rpi_testpoint_off(void)
 {
-    bcm2835_gpio_clr(PRI_TEST_POINT);
+    bcm2835_gpio_clr(TEST_POINT);
 }
 
 /********************************************************************
  * rpi_halt()
  *
- *  Output message and halt
+ *  Output message and halt with motor LED rapid flashing.
  *
- *  param:  Message
+ *  param:  None
  *  return: None
  */
 void rpi_halt(void)
 {
-    printf("HALT\n");
+    dbg_printf(0, "HALT\n");
     for (;;)
     {
+        bcm2835_gpio_clr(MOTOR_LED);
+        bcm2835_st_delay(250000);
+        bcm2835_gpio_set(MOTOR_LED);
+        bcm2835_st_delay(250000);
     }
 }
 

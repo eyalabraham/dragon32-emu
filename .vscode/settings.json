@@ -11,6 +11,9 @@
         "printf.h": "c",
         "rpi.h": "c",
         "uart.h": "c",
-        "spiaux.h": "c"
+        "spiaux.h": "c",
+        "fat32.h": "c",
+        "dragon.h": "c",
+        "ddos12.h": "c"
     }
 }

@@ -12,14 +12,14 @@
 #include    <ctype.h>
 #include    <string.h>
 
-#include    "printf.h"
+#include    "dbgmsg.h"
 
 #include    "cpu.h"
 #include    "mem.h"
 #include    "sd.h"
-#include    "fat32.h"
 #include    "rpi.h"
 #include    "vdg.h"
+#include    "fat32.h"
 
 #include    "loader.h"
 
@@ -51,6 +51,7 @@
 #define     MSG_ROM_READ_DONE       "ROM IMAGE LOAD COMPLETED.       "
 #define     MSG_CAS_READ_ERROR      "CAS FILE READ ERROR.            "
 #define     MSG_CAS_FILE_MOUNTED    "CAS FILE MOUNTED.               "
+#define     MSG_DISK_IMG_MOUNTED    "DISK IMAGE MOUNTED.             "
 
 #define     CODE_BUFFER_SIZE        (16*1024)
 #define     CARTRIDGE_ROM_BASE      0xc000
@@ -59,19 +60,14 @@
 #define     EXEC_VECTOR_HI          0x9d
 #define     EXEC_VECTOR_LO          0x9e
 
-typedef enum
-    {
-        FILE_ROM,
-        FILE_CAS,
-        FILE_PNG,
-        FILE_JPG,
-        FILE_OTHER,
-    } file_type_t;
+/* -----------------------------------------
+   Module types
+----------------------------------------- */
 
 /* -----------------------------------------
    Module function
 ----------------------------------------- */
-static file_type_t file_get_type(char *directory_entry);
+static loader_file_type_t file_get_type(char *directory_entry);
 
 static void        text_write(int row, int col, char *text);
 static void        text_highlight(int on_off, int row);
@@ -85,9 +81,26 @@ static void        util_restore_text_screen(void);
 /* -----------------------------------------
    Module globals
 ----------------------------------------- */
-static uint8_t  text_screen_save[512];
-static uint8_t  code_buffer[CODE_BUFFER_SIZE];
-static dir_entry_t  mounted_cas_file;
+static uint8_t              text_screen_save[512];
+static uint8_t              code_buffer[CODE_BUFFER_SIZE];
+static file_param_t         cas_file;
+static file_param_t         disk_img_file;
+static loader_file_type_t   disk_img_file_type;
+
+/*------------------------------------------------
+ * loader_init()
+ *
+ *  Initialize loader module.
+ *
+ *  param:  Nothing
+ *  return: Nothing
+ */
+void loader_init(void)
+{
+    memset(&cas_file, 0, sizeof(file_param_t));
+    memset(&disk_img_file, 0, sizeof(file_param_t));
+    disk_img_file_type = FILE_NONE;
+}
 
 /*------------------------------------------------
  * loader()
@@ -108,7 +121,7 @@ void loader(void)
     int             list_start, prev_list_start, list_length;
     int             highlighted_line;
 
-    file_type_t     file_type;
+    loader_file_type_t  file_type;
 
     util_save_text_screen();
 
@@ -116,7 +129,7 @@ void loader(void)
      */
     if ( !fat32_is_initialized() )
     {
-        printf("loader()[%d]: FAT32 or SD not available.\n", __LINE__);
+        dbg_printf(0, "loader()[%d]: FAT32 or SD not available.\n", __LINE__);
 
         text_write(0, 0, MSG_FAT32_ERROR);
         text_write(TERMINAL_STATUS_ROW, 0, MSG_EXIT);
@@ -145,8 +158,6 @@ void loader(void)
     highlighted_line = 0;
     text_dir_output(list_start, list_length, directory_list);
     text_write(TERMINAL_STATUS_ROW, 0, MSG_STATUS);
-
-    memset(&mounted_cas_file, 0, sizeof(dir_entry_t));
 
     for (;;)
     {
@@ -193,10 +204,10 @@ void loader(void)
         }
         else if ( key_pressed == SCAN_CODE_ENTR )
         {
-            text_clear();
-
             if ( directory_list[(list_start + highlighted_line)].is_directory )
             {
+                text_clear();
+
                 /* Read and display the directory
                  */
                 if ( (list_length = fat32_parse_dir(directory_list[(list_start + highlighted_line)].cluster_chain_head,
@@ -216,7 +227,9 @@ void loader(void)
             }
             else
             {
-                /* Handle .ROM and .CAS extensions ignore
+                dbg_printf(2, "loader()[%d]: Accessing '%s'\n", __LINE__, directory_list[(list_start + highlighted_line)].lfn);
+
+                /* Handle .ROM .CAS and .VDK extensions ignore
                  * all other file types
                  */
                 file_type = file_get_type(directory_list[(list_start + highlighted_line)].lfn);
@@ -229,6 +242,8 @@ void loader(void)
                     fat32_fopen(&directory_list[(list_start + highlighted_line)], &file);
                     rom_bytes = fat32_fread(&file, code_buffer, CODE_BUFFER_SIZE);
                     fat32_fclose(&file);
+
+                    text_clear();
 
                     if ( rom_bytes == -1 )
                     {
@@ -251,15 +266,39 @@ void loader(void)
                 }
                 else if ( file_type == FILE_CAS )
                 {
-                    /* Mount the selected CAS file
+                    /* Open the selected CAS file.
                      */
-                    memcpy(&mounted_cas_file, &directory_list[(list_start + highlighted_line)], sizeof(dir_entry_t));
+                    fat32_fclose(&cas_file);
+                    if ( fat32_fopen(&directory_list[(list_start + highlighted_line)], &cas_file) == NO_ERROR )
+                    {
+                        text_clear();
 
-                    text_write(0, 0, MSG_CAS_FILE_MOUNTED);
-                    text_write(TERMINAL_STATUS_ROW, 0, MSG_EXIT);
+                        text_write(0, 0, MSG_CAS_FILE_MOUNTED);
+                        text_write(TERMINAL_STATUS_ROW, 0, MSG_EXIT);
 
-                    util_wait_quit();
-                    break;
+                        util_wait_quit();
+                        break;
+                    }
+                }
+                else if ( file_type == FILE_VDK )
+                {
+                    /* Open the selected disk image
+                     */
+                    fat32_fclose(&disk_img_file);
+                    disk_img_file_type = FILE_NONE;
+                    
+                    if ( fat32_fopen(&directory_list[(list_start + highlighted_line)], &disk_img_file) == NO_ERROR )
+                    {
+                        disk_img_file_type = file_type;
+
+                        text_clear();
+
+                        text_write(0, 0, MSG_DISK_IMG_MOUNTED);
+                        text_write(TERMINAL_STATUS_ROW, 0, MSG_EXIT);
+
+                        util_wait_quit();
+                        break;
+                    }
                 }
                 else
                 {
@@ -282,22 +321,68 @@ void loader(void)
 }
 
 /*------------------------------------------------
- * loader_mount_cas_file()
+ * loader_cas_fread()
  *
- *  Return the directory entry of a selected CAS file.
+ *  Read the open CAS file.
  *
- *  param:  Pointer to directory entry record
- *  return: 0=error, 1=ok
+ *  param:  Pointer to caller buffer and bytes to read
+ *  return: Bytes read
  */
-int loader_mount_cas_file(dir_entry_t *cas_file)
+int loader_cas_fread(uint8_t *buffer, uint16_t bytes)
 {
-    if ( mounted_cas_file.cluster_chain_head != 0 )
-    {
-        memcpy(cas_file, &mounted_cas_file, sizeof(dir_entry_t));
-        return 1;
-    }
+    return fat32_fread(&cas_file, buffer, bytes);
+}
 
-    return 0;
+/*------------------------------------------------
+ * loader_disk_fread()
+ *
+ *  Read the open disk image file.
+ *
+ *  param:  Pointer to caller buffer and bytes to read
+ *  return: Bytes read
+ */
+int  loader_disk_fread(uint8_t *buffer, uint16_t bytes)
+{
+    return fat32_fread(&disk_img_file, buffer, bytes);
+}
+
+/*------------------------------------------------
+ * loader_disk_fwrite()
+ *
+ *  Write the open disk image file.
+ *
+ *  param:  Pointer to caller buffer and bytes to write
+ *  return: Bytes written
+ */
+int  loader_disk_fwrite(uint8_t *buffer, uint16_t bytes)
+{
+    return fat32_fwrite(&disk_img_file, buffer, bytes);
+}
+
+/*------------------------------------------------
+ * loader_disk_fseek()
+ *
+ *  Seek to location of an open disk image file.
+ *
+ *  param:  Location to seek
+ *  return: 0=Seek error, -1=Ok
+ */
+int loader_disk_fseek(uint32_t position)
+{
+    return fat32_fseek(&disk_img_file, position);
+}
+
+/*------------------------------------------------
+ * loader_disk_img_type()
+ *
+ *  Return the open image file type.
+ *
+ *  param:  None
+ *  return: Image file type.
+ */
+loader_file_type_t loader_disk_img_type(void)
+{
+    return disk_img_file_type;
 }
 
 /*------------------------------------------------
@@ -309,7 +394,7 @@ int loader_mount_cas_file(dir_entry_t *cas_file)
  *  param:  Pointer to directory entry record
  *  return: File type
  */
-static file_type_t file_get_type(char *directory_entry)
+static loader_file_type_t file_get_type(char *directory_entry)
 {
     if ( strstr(directory_entry, ".ROM") || strstr(directory_entry, ".rom") )
     {
@@ -318,6 +403,10 @@ static file_type_t file_get_type(char *directory_entry)
     else if ( strstr(directory_entry, ".CAS") || strstr(directory_entry, ".cas") )
     {
         return FILE_CAS;
+    }
+    else if ( strstr(directory_entry, ".VDK") || strstr(directory_entry, ".vdk") )
+    {
+        return FILE_VDK;
     }
 
     return FILE_OTHER;

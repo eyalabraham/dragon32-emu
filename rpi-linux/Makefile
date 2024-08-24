@@ -36,10 +36,10 @@ OPT = -Wall -I $(INCDIR)
 #------------------------------------------------------------------------------------
 # dependencies
 #------------------------------------------------------------------------------------
-DEPS = mem.h cpu.h mc6809e.h rpi.h sam.h pia.h vdg.h printf.h spiaux.h rpi-linux/uart.h sdfat32.h loader.h
+DEPS = mem.h cpu.h mc6809e.h rpi.h sam.h pia.h vdg.h disk.h printf.h spiaux.h rpi-linux/uart.h sdfat32.h loader.h
 OBJDRAGON = ../dragon.o \
-            ../mem.o ../cpu.o ../sam.o ../pia.o ../vdg.o \
-			../printf.o spiaux.o ../sd.o ../fat32.o rpi.o ../loader.o uart.o
+            ../mem.o ../cpu.o ../sam.o ../pia.o ../vdg.o ../disk.o \
+			../printf.o ../trace.o spiaux.o ../sd.o ../fat32.o rpi.o ../loader.o ../dbgmsg.o
 
 _DEPS = $(patsubst %,$(INCDIR)/%,$(DEPS))
 

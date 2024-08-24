@@ -1,0 +1,892 @@
+Dragon DOS Information
+#FILE: $RCSfile: drgndos.txt $
+#DESC: Dragon Dos Controller, Disk and File formats
+#REV: $Revision: 1.4 $
+#DATE: $Date: 1997/04/10 19:02:14 $
+#AUTHOR: Graham E. Kinns
+#DISCLAIMER: All information provided as is etc.
+#ARCHIVE: This file is part of the DRGNINFO collection of Dragon info files
+#CONTACT: Comments, bugs, revisions, suggestions to Dragon@grempc.demon.co.uk
+#HISTORY: 1.0 16/03/94 - Initial version
+#RCSID: $Id: drgndos.txt 1.4 1997/04/10 19:02:14 Graham Exp $
+#XREF: basicfmt.txt - tokenised Basic format
+#      tandydsk.txt - Tandy disk format
+
+Contents:
+=========
+
+1.	Disk Controller Cartridge
+2.	Dragon DOS variants
+3.	Disk Layout
+4.	Directory Track
+5.	Bootable disks
+6.	File extensions and formats
+7.	Added BASIC Keywords by Token value
+8.	Description of commands added to BASIC
+9.	Programmers Guide to DragonDOS
+10.	DOS Lower memory usage
+11.	DOS Rom reference
+
+1.  Disk Controller Cartridge
+=============================
+
+Chip used:	WD2797 (Upwardly compatible with 17xx series)
+Memory Interface:
+		Floppy Disc Controller Registers
+	$ff40	Status Reg (Read) / Command Reg (Write)
+	$ff41	Track Reg  (R/W)
+	$ff42	Sector Reg (R/W)
+	$ff43	Data Reg   (R/W)
+
+	$ff48	Write-only data latch
+		bit 7	Not used
+		bit 6	Not used
+		bit 5	Enables !NMI Interrupt from 2797 INTRQ
+		bit 4	Enables write pre-compensation (Single Density only)
+		bit 3	Single Density enable
+		bit 2	Motor on
+		bits1:0	Drive unit number 0 - 3
+
+	NMI Interrupt from Controller INTRQ line
+	CART Interrupt from Controller DRQ line
+
+ROM OS:
+	Appears in cartridge space $c000-dfff (Cumana system uses $c000-feff)
+	Adds IRQ, FIRQ and NMI handling code, uses various Ram hooks
+
+Hardware Interface:
+	Standard Shugart compatible interface
+
+Drives Supported:	4 (1 - 4)
+
+
+2.  Dragon DOS variants
+=======================
+
+Dragon DOS 1.0:
+	Original release by Dragon Data Ltd.
+	Patches for EPROM appeared in Dragon User 
+	(with corrections in Dragon User )
+	Bugs:	No more than 127 files can be accessed
+		80 Track DS disks wrongly written
+		Doesn't recognise disk changes
+	{7} adds the following:
+		Files on DS disks could be read incorrectly if immediately
+		  following thefollowing first the disk access
+		First file control block was corrupted when sectors 19-36 of
+		  Tr20 of a DS disk were written
+		First file control block corrupted when DIR was used
+		Files extensions could be appended to wrong file if >127 files
+		  on the disk or the master directory entry and any extension
+		  entry were separated by more than 3 sectors
+
+Cumana Dos 1.2/2.0:
+	Shipped with Cumana Disk system
+	DragonDOS compatible at disk level and command level but with
+	  enhanced commands (SCOPY and Tape/disk oriented copying)
+	Used 8K rather than 4K eprom for OS
+	Supposedly a large number of Bugs
+
+Delta Dos from Premier Microsystems.
+	Early version was Single Density ? Later versions were double density
+	Record/stream oriented file handling
+
+Eurohard Dos 3.0:
+
+
+Eurohard Dos 4.0:
+	Improved Dragon Dos 1.0
+	Features:
+		Scrolling directory, autoboot at power up
+	Bugs:
+		(Unknown)
+
+SuperDos E4/5/6:
+	Much improved Dragon Dos 1.0 by Mike Kerry of Grosvenor Software
+	Features:
+		Paged directory, fixes all known 1.0 bugs
+	Bugs:
+		Corrupts mem/files/hangs on FWRITE time out on open files
+		RENAME allows creation of zero length filenames when used to
+                copy across disks
+		WP error can occur 3 or 4 times in succession.
+		ERROR GOTO not always cancelled on return to BASIC
+		LOAD'd files remain open
+		EOF errors occurs whilst FLREADing from large fragmented files
+
+DosPlus x.x:
+	Complete rewrite by Phil Scott
+	Features:
+		Disk labels, close individ files
+	Bugs:
+		(Unknown)
+
+
+3.  Disk Layout
+===============
+
+        MFM Double Density
+	 40 or 80 tracks (0 - 39 or 0 - 79)
+	  1 or  2 sides
+	 18 sectors per track (1 - 18)
+	256 bytes per sector
+	2:1 interleave
+
+Drive numbering: Dragon DOS refers to drives 1-4 (physical units 0-3),
+drive 0 can also be used to refer to drive 1.
+
+Double sided disks are usually considered as having 36 sectors per
+track rather than referring to side numbers.
+
+Logical Sector Numbers (LSNs) are used to refer to a sector relative to the
+first sector on the disk.  LSN 0x000 == Track 0, Side 0, Sector 1.
+
+40 Tracks, 1 Side,  18 Sectors:
+ 
+  LSN 0x000  Track 0 Side 0 Sector 1
+  LSN 0x012  Track 1 Side 0 Sector 1
+
+40 Tracks, 2 Sides, 36 Sectors:
+
+  LSN 0x000  Track 0 Side 0 Dragon Sector  1 Physical Sector 1
+  LSN 0x012  Track 0 Side 1 Dragon Sector 19 Physical Sector 1
+  LSN 0x024  Track 1 Side 0 Dragon Sector  1 Physical Sector 1
+
+4.  Directory Track
+===================
+
+Track 20 contains the Directory information
+
+Sectors 1 and 2 hold the sector bitmap
+
+Track 20 Sector 1 identifies the disk format as follows:
+Offset
+0xfc	Tracks on disk
+0xfd	Sectors per track (36 indicates double sided / 18 secs per track)
+0xfe	One's complement of offset 0xfc
+0xff	One's complement of offset 0xfd
+
+Sectors 3 - 18 hold directory entries.
+Each directory entry is 25 bytes long - 160 entries max numbered 0 - 159.
+Each sector contains 10 directory entries as follows:
+0x00 - 0x18	Directory Entry  1
+0x19 - 0x31	Directory Entry  2
+0x32 - 0x4a	Directory Entry  3
+0x4b - 0x63	Directory Entry  4
+0x64 - 0x7c	Directory Entry  5
+0x7d - 0x95	Directory Entry  6
+0x96 - 0xae	Directory Entry  7
+0xaf - 0xc7	Directory Entry  8
+0xc8 - 0xe0	Directory Entry  9
+0xe1 - 0xf9	Directory Entry 10
+0xfa - 0xff	6 unused bytes - usually 0x00 - used by some programs to
+		store long disk labels
+
+4.1  Format of Sector Bitmap
+----------------------------
+
+The sector bitmap is split across sectors 1 and 2 of track 20 
+Sector 1:
+0x00 - 0xb3	Bitmap for LSNs 0x000 - 0x59f
+0xb4 - 0xfb	Unused - 0x00 - used by DosPlus for label and something else
+0xfc - 0xff	Disk format information (see above)
+
+Sector 2:
+0x00 - 0xb3	Bitmap for LSNs 0x5a0 - 0xb3f (80 Track, DS only)
+0xb4 - 0xff	Unused - 0x00
+
+Each bit in the sector bitmap represents a single logical sector number -
+0 = used, 1 = free
+
+LSN
+0x000	Sector 1 Byte 0x00 Bit 0
+0x007	Sector 1 Byte 0x00 Bit 7
+0x008	Sector 1 Byte 0x01 Bit 0
+0x59f	Sector 1 Byte 0xb3 Bit 7
+0x5a0	Sector 2 Byte 0x00 Bit 0
+0xb3f	Sector 2 Byte 0xb3 Bit 7
+
+4.2  Directory entry format
+---------------------------
+
+0x00		flag byte
+	bit 7	Deleted - this entry may be reused
+	bit 6	Unused
+	bit 5	Continued - byte at offset 0x18 gives next entry number
+	bit 4	Unused
+	bit 3	End of Directory - no further entries need to be scanned
+	bit 2	Unused
+	bit 1	Protect Flag - file should not be overwritten
+	bit 0	Continuation Entry - this entry is a Continuation Block
+
+0x01 - 0x17	File Header Block or Continuation Block
+
+0x18	[flag byte bit 5 == 0]
+		Bytes used in last sector (0x00 == 256 bytes)
+	[flag byte bit 5 == 1]
+		Next directory entry num (0-159)
+
+File Header block:  (flag byte bit 0 == 0)
+
+0x01 - 0x08	filename (padded with 0x00)
+0x09 - 0x0b 	extension (padded with 0x00)
+0x0c - 0x0e	Sector Allocation Block 1
+0x0f - 0x11	Sector Allocation Block 2
+0x12 - 0x14	Sector Allocation Block 3
+0x15 - 0x17	Sector Allocation Block 4
+
+Continuation block:  (flag byte bit 0 == 1)
+
+0x01 - 0x03	Sector Allocation Block 1
+0x04 - 0x06	Sector Allocation Block 2
+0x07 - 0x09	Sector Allocation Block 3
+0x0a - 0x0c	Sector Allocation Block 4
+0x0d - 0x0f	Sector Allocation Block 5
+0x10 - 0x12	Sector Allocation Block 6
+0x13 - 0x15	Sector Allocation Block 7
+0x16 : 0x17	Unused
+
+Sector Allocation Block format:
+
+0x00 : 0x01	Logical Sector Number of first sector in this block
+0x02		Count of contiguous sectors in this block
+
+5.  Bootable disks
+==================
+
+The characters 'OS' at the offsets 0 and 1 of LSN 2 (Track 0, sector 3)
+signify the disk is bootable.
+
+The DragonDos BOOT command checks for this signature returning BT error
+if not found.  Otherwise, Sectors 3-18 of track 0 are loaded into memory
+at address $2600 and execution begins at $2602.
+
+Note that the operation of BOOT under the original DragonDos does not set the
+default drive number to that passed to the BOOT command but DosPlus does.
+
+6.  File extensions and formats
+===============================
+
+Three standard file types exist under Dragon Dos - these are
+        .DAT - standard data file
+        .BAS - BASIC tokenised file 
+        .BIN - binary image file
+
+Contents of DAT file are typically in ASCII style text format
+
+BAS and BIN are essentially the same - both start with an 9 byte header of
+the following format:
+     
+Offset     Value
+
+0x00       0x55
+0x01       Filetype
+0x02:0x03  Load Address
+0x04:0x05  Length
+0x06:0x07  Exec Address
+0x08       $AA
+0x09-      Data
+
+Filetype is
+0x01    BAS
+0x02    BIN
+0x03    Segmented Binary files under DosPlus {7}
+Remainder are undefined under standard Dragon DOS.  
+
+?? Result on 'RUN'ning a file of the wrong type is not known
+
+Load Address is the data load address - typically $2401 for a .BAS file
+  although unsure whether this is actually used.
+
+Length is length of Data block that follows i.e. complete file should be
+  Length+9 bytes long
+
+Exec Address is execute address stored in $9d:9e for default EXEC addr if
+  the  data/program is LOADed - if the BIN file is RUN this defines the entry
+  point that is jumped to.  For a BASIC program this should be $8B8D.
+
+
+7.  Added BASIC Keywords by Token value
+=======================================
+
+Keywords:
+
+0xce	AUTO
+0xcf	BACKUP
+0xd0	BEEP
+0xd1	BOOT
+0xd2	CHAIN
+0xd3	COPY
+0xd4	CREATE	
+0xd5	DIR
+0xd6	DRIVE
+0xd7	DSKINIT
+0xd8	FREAD
+0xd9	FWRITE
+0xda	ERROR
+0xdb	KILL
+0xdc	LOAD
+0xdd	MERGE
+0xde	PROTECT
+0xdf	WAIT
+0xe0	RENAME
+0xe1	SAVE
+0xe2	SREAD
+0xe3	SWRITE
+0xe4	VERIFY
+0xe5	FROM
+0xe6	FLREAD
+0xe7	SWAP
+
+Functions:
+
+0xa2	LOF
+0xa3	FREE
+0xa4	ERL
+0xa5	ERR
+0xa6	HIMEM
+0xa7	LOC
+0xa8	FRE$
+
+8.  Description of commands added to BASIC
+==========================================
+
+AUTO (Token 0xce)
+BACKUP (Token 0xcf)
+BEEP (Token 0xd0)
+BOOT (Token 0xd1)
+CHAIN (Token 0xd2)
+COPY (Token 0xd3)
+CREATE (Token 0xd4)
+DIR (Token 0xd5)
+DRIVE (Token 0xd6)
+DSKINIT (Token 0xd7)
+ERL (Token 0xffa4)
+ERR (Token 0xffa5)
+ERROR (Token 0xda)
+FLREAD (Token 0xe6)
+FRE$ (Token 0xffa8)
+FREAD (Token 0xd8)
+FREE (Token 0xffa3)
+FROM (Token 0xe5)
+FWRITE (Token 0xd9)
+HIMEM (Token 0xffa6)
+KILL (Token 0xdb)
+LOAD (Token 0xdc)
+LOC (Token 0xffa7)
+LOF (Token 0xffa2)
+MERGE (Token 0xdd)
+PROTECT (Token 0xde)
+RENAME (Token 0xe0)
+SAVE (Token 0xe1)
+SREAD (Token 0xe2)
+SWAP (Token 0xe7)
+SWRITE (Token 0xe3)
+VERIFY (Token 0xe4)
+WAIT (Token 0xdf)
+
+
+9.  Programmers Guide to DragonDOS
+==================================
+
+DragonDOS functions are available via an indirect jump table located at $c004
+onwards
+
+[$c004]	Hardware Command routine - general disk operation restore, seek, etc.
+	Contents of $00ea specify operation
+
+[$c006]	Address of data table for [$c004] ($00ea)
+
+[$c008]	Validates filename and copies to 'current drive block'
+	  On entry:
+	    X points to filename e.g. '3:FILENAME.EXT'
+	    B length of filename e.g. 0x0e
+	    Y points to default extension to use if none is given e.g. 'DAT'.
+	    Use '   ' for no default extension
+	  On Return:
+	    Filename appears at $0650-$065a
+	    CC.Z clear on error
+	    B contains error code
+	    U $065b always (SuperDosE6)
+
+[$c00a]	Open a file - copies directory entry to a file control block
+	  On entry:
+	    Filename at $0650 ??
+	  Returns:
+	    CC.Z clear on error
+	    A FCB number (0-9)
+	    B contains error code
+
+[$c00c]	Create a file/directory entry with backup
+	  On entry:
+	  Returns:
+	    CC.Z clear on error
+	    B contains error code
+
+[$c00e]	%LENFIL% Reports length of file
+
+[$c010] %CLOSAL% Closes	all open files on drive specified in $00eb
+	  On entry:
+	  Returns:
+	    CC.Z clear on error
+	    B contains error code
+
+[$c012]	Closes a single file
+	  On entry:
+	    A FCB number (0-9) to close
+	  Returns:
+	    CC.Z clear on error
+	    B contains error code
+
+[$c014]	Read data from file to memory
+	  On entry:
+	  Returns:
+	    CC.Z clear on error
+	    B contains error code
+
+[$c016]	Write data to file from memory, verifies if on.
+	  On entry:
+	    A  FCB number (0-9)
+	    X  pointer to data to write
+	    U  number of bytes to write
+	    Y:B  24bit file pointer position to write at
+	         Y  LSN of sector
+	         B  byte offset within sector
+	  Returns:
+	    CC.Z clear on error
+	    B contains error code
+
+[$c018]	%GETFRE% Gets free space on disk
+
+[$c01a]	%DELETE% Deletes file and frees sectors
+
+[$c01c]	Protect/Unprotect a file
+
+[$c01e]	%RENAME% Rename a file
+
+[$c020]	%GETDIR% Gets a directory entry
+
+[$c022]	Find free buffer and read sector
+
+[$c024]	Copy updated directory sectors from Tr20 to Tr16
+
+[$c026]	Read absolute sector
+
+[$c028]	Write absolute sector, no verify
+
+
+DosPlus adds the following functions: {7}
+
+[$c02a]	Verify absolute sector
+
+[$c02c]	Initialise disk
+
+[$c02e]	Disk error codes table base address
+
+
+10.  DOS Lower memory usage
+===========================
+
+$00ea		Disk operation code command byte
+$00eb		Active/last used drive number (1-4)
+$00ec		Track number (0-79)
+$00ed		Sector number (1-36)
+$00ee:00ef	Disk buffer ptr
+$00f0		Disk error status byte
+$00f1		Current disk file control block number (0-9)
+		  0xff - no files open ??
+$00f2		Number of bytes in disk buffer area
+$00f3		Number of bytes to transfer to/from buffer
+$00f4		Current disk type - taken from directory track on
+		  first disk access after switch on or reset
+			0x00  1 side  40 tracks
+			0x01  2 sides 40 tracks
+			0xfe  2 sides 80 tracks
+			0xff  1 side  80 tracks
+$00f4		{2} lists this as "Record Length Flag"
+			0x00 don't care, 0xff do care
+$00f5		File read/write/verify flag
+			0x00 read
+			0x01 write
+			0xff verify
+$00f6		I/O currently in progress flag
+		  0x00 check for time out, Non-0x00 skip timeout check
+$00f8		Sector currently seeking {SuperDos Rom}
+
+$0600-0604	Temporary storage {2}
+$0605-0609	Controller Variables {2}
+$0605		Timeout count, timeout occurs when this location is
+		  decremented from 0x01 to 0x00
+$0606		Hardware command byte mask for $ff40
+$0607		Hardware control byte mask for $ff48 {SuperDosE6 Rom}
+$0608		(0xff)
+$0609		Verify flag, 0x00 Off Non-0x00 On
+$060a		Default DRIVE number
+$060b:060c	FWRITE buffer addr
+$060d:060e	AUTO current line number
+$060f:0610	AUTO line number increment
+$0611		RUN/LOAD flag, 0x00 LOAD Non-0x00 RUN
+$0612		FREAD/FLREAD flag {2}
+$0613		AUTO flag, 0x00 Off Non-0x00 On
+$0614		ERROR GOTO flag, 0x00 Off Non-0x00 On
+$0615:0616	ERROR GOTO trap line number
+$0617:0618	ERL Line number containing last error
+$0619		ERR Last error number
+$061a:061b	Address of statement in error
+$061c-0621	Drive 1 details - 6 bytes
+		  Offset:
+		    0x00
+		    0x01
+		    0x02
+		    0x03
+		    0x04
+		    0x05 (0x00)
+$0622-0627	Drive 2 details
+$0628-062d	Drive 3 details 
+$062e-0633	Drive 4 details 
+$0634-063a	Disk Buffer 1 details - 7 bytes
+		  Offset:
+		    0x00:0x01	LSN ?
+		    0x02	(0x00) ?? tested for 0x55, 0xff
+		    0x03	Drive # ? (1-4)
+		    0x04	Buffer priority # ?? (0x04)
+		    0x05:0x06	Buffer address ($0800)
+$063b-0641	Disk Buffer 2 details 
+$063f		Disk Buffer 2 ?? (0x03)
+$0640:0641	Disk Buffer 2 address ($0900)
+$0642-0648	Disk Buffer 3 details
+$0646		Disk Buffer 3 ?? (0x02)
+$0647:0648	Disk Buffer 3 address ($0a00)
+$0649-064f	Disk Buffer 4 details 
+$064d		Disk Buffer 4 ?? (0x01)
+$064e:064f	Disk Buffer 4 address ($0b00)
+$0650-0682	Current drive information 
+$0652:0653	Start addr of program loaded
+$0654:0655	Length of program loaded
+$0656:0657	Exec addr of program loaded
+$0678:0679
+$067d		FCB number
+$0683-0696	USR vector table relocated from $0134-0147
+$0697-069a	Drive on line flag - one per drive
+		  0x00 off line Non-0x00 on line
+$0697:0698	CumanaDOS - AUTO current line number {1}
+$0699:069a	CumanaDOS - AUTO line number increment {1}
+$069b-069e	Current track - one per drive
+$069b		CumanaDOS - AUTO flag, 0x00 Off Non-0x00 On {1}
+$069c:069d	CumanaDOS - ERROR GOTO line number {1}
+$069e		CumanaDOS - ERROR GOTO flag, 0x00 Off Non-0x00 On {1}
+$069f-06a2	Head stepping rate - one per drive (0x02) {4} & {5}
+		  0x00	 6ms <- this can safely be used with most drives
+		  0x01	12ms
+		  0x02	20ms <- this is default
+		  0x03	30ms
+$069f:06a0	CumanaDOS - ERL Last error line {1}
+$06a1		CumanaDOS - ERR Last error code {1}
+$06a3-06a6	Tracks on disk - one per drive
+$06a7-06aa	Sectors per track - one per drive
+$06ab-06bc	Directory Sector status
+$06bd-06db	File Control Block 0 - 31 bytes each
+		Offset: 0x00 - 0x07	Filename
+			0x08 - 0x0a	Extension
+			0x0b		Drive number (1-4)
+			0x0c
+			0x0d
+			0x0e
+			0x0f
+			0x10
+			0x11 - Flag ?
+			0x12
+			0x13
+			0x14
+			0x15
+			0x16
+			0x17
+			0x18
+			0x19
+			0x1a
+			0x1b
+			0x1c
+			0x1d
+			0x1e
+$06dc-06fa	File Control Block 1
+$06fb-0719	File Control Block 2
+$071a-0738	File Control Block 3
+$0739-0757	File Control Block 4
+$0758-0776	File Control Block 5
+$0777-0795	File Control Block 6
+$0796-07b4	File Control Block 7
+$07b5-07c3	File Control Block 8
+$07c4-07f2	File Control Block 9
+$07f3-07ff	Temporary Variables
+$0800-08ff	Disk Buffer 1
+$0900-09ff	Disk Buffer 2
+$0a00-0aff	Disk Buffer 3
+$0b00-0bff	Disk Buffer 4
+
+11.  DOS Rom reference
+======================
+
+See memmap.txt for the usage of low memory $0000-$0bff.
+See romref.txt for any BASIC ROM calls $8000-$bfff and abbreviations used.
+
+Dragon DOS (All presumed v1.0 unless stated otherwise)
+
+$c000:c001	'DK' - used by BASIC Rom init to detect Disk Rom
+$c002-c003	Cartridge Init entry point (BRA $c0xx)
+$c004-c029	Indirect address table
+$c004:c005	Low Level Hardware Command byte routine ($cxxx)
+$c006:c007	($00ea)
+$c008:c009	($cxxx)
+$c00a:c00b	($cxxx)
+$c00c:c00d	($cxxx)
+$c00e:c00f	%LENFIL% Reports length of file ($cxxx)
+$c010:c011	%CLOSAL% Closes	all open files ($cxxx)
+$c012:c013	($cxxx)
+$c014:c015	($cxxx)
+$c016:c017	($cxxx)
+$c018:c019	%GETFRE% Gets free space ($dxxx)
+$c01a:c01b	%DELETE% Deletes file ($cxxx)
+$c01c:c01d	Protect/Unprotect a file ($dxxx)
+$c01e:c01f	%RENAME% Rename a file ($dxxx)
+$c020:c021	%GETDIR% Gets a directory entry ($dxxx)
+$c022:c023	($dxxx)
+$c024:c025	($cxxx)
+$c026:c027	($dxxx)
+$c028:c029	($dxxx)
+$c0fc		Writes a sector to disk
+$c104		Read sector from disk
+$c165		Drive/Hardware Init
+$c169		Low level Hardware I/O routine to send cmd
+$c397		DSKINIT token dispatch address
+$c3bc		Formats disk in DEFD drive {1}
+$c520		BACKUP token dispatch address
+$c64c		Reserved words token dispatch routine
+$c667		Function token dispatch routine
+$c69e		Ram Hook JMP from System error trap at $0191
+$d14d		Get free space on current drive
+$d311		Convert Logical Sector Num in Y to physical track/sector
+$d332		COPY token dispatch address
+$d3e5		MERGE token dispatch address
+$d490		Ram Hook JMP from RUN Link at $0194
+$d4a7		LOAD token dispatch address
+$d503		CHAIN token dispatch address
+$d53f		SAVE token dispatch address
+$d720		Ram Hook JMP from LINE INPUT from DEVN at $0182
+$d725		CREATE token dispatch address
+$d774		KILL token dispatch address
+$d781		PROTECT token dispatch address
+$d7a5		RENAME token dispatch address
+$d7c7		FLREAD token dispatch address
+$d7fb		FREAD token dispatch address
+$d8a5		FWRITE token dispatch address
+$d8fa		Ram Hook JMP from O/p chr in A to DEVN at $0167
+$d902		Ram Hook JMP from Device Open at $015e
+$d917		Ram Hook JMP from Close file at $0176
+$d960		Ram Hook JMP from Re-request keyb i/p at $017c
+$da35		DIR token dispatch address
+$da3c		%DIRDSK% Directory of current disk to DEVNUM (CoCo $cbcf) {1}
+$dadc		AUTO token dispatch address
+$db90		BEEP token dispatch address
+$dba5		Beep B times
+$dbc1		WAIT token dispatch address
+$dbcb		Wait for time X milliseconds
+$dbd5		SWAP token dispatch address
+$dc03		BOOT token dispatch address
+$dc0a		Boots disk in current drive
+$dc3c		DRIVE token dispatch address
+$dc49		ERROR token dispatch address
+$dc79		SREAD token dispatch address
+$dcc8		SWRITE token dispatch address
+$dd36		VERIFY token dispatch address
+$dd4d		Ram Hook JMP from Check EOF on DEVN at $0188
+$dd7a		LOC function token dispatch address
+$dd88		LOF function token dispatch address
+$dda3		FREE function token dispatch address
+$ddbb		ERL function token dispatch address
+$ddc1		ERR function token dispatch address
+$ddc7		HIMEM function token dispatch address
+$ddcb		FRE$ function token dispatch address
+$debb		Function words table
+$ded4		Reserved words table
+$e56d		Cumana DOS - Sector Read routine {1}
+$e643		Cumana DOS - Sector Write routine {1}
+
+SuperDos E6
+
+$c000:c001	'DK' - used by BASIC Rom init to detect Disk Rom
+$c002-c003	Cartridge Init entry point (BRA $c02a)
+$c004-c029	Indirect address table
+$c004:c005	Hardware Command routine ($c168)
+$c006:c007	($00ea)
+$c008:c009	Validates filename ($c7e8)
+$c00a:c00b	Open a file ($c8a8)
+$c00c:c00d	Create a file ($cf3a)
+$c00e:c00f	%LENFIL% Reports length of file ($ce9f)
+$c010:c011	%CLOSAL% Closes	all open files on drive in $00eb ($cee1)
+$c012:c013	Closes single file ($cef7)
+$c014:c015	read data from file ($c9bd)
+$c016:c017	write data to file ($cb7f)
+$c018:c019	%GETFRE% Gets free space ($d173)
+$c01a:c01b	%DELETE% Deletes file ($cfdf)
+$c01c:c01d	Protect/Unprotect a file ($d0c5)
+$c01e:c01f	%RENAME% Rename a file ($d0f7)
+$c020:c021	%GETDIR% Gets a directory entry ($d204)
+$c022:c023	($d276)
+$c024:c025	($c75e)
+$c026:c027	($d337)
+$c028:c029	($d327)
+$c02a-c09c	Cartridge init code
+$c09d-c0da	Inits DOS workspace area and buffers
+$c0dd-c0ed	Disk motor spin up delay subroutine - if motor is not active
+		  ($0605 == 0x00) then a X is decremented from 0xd800 before
+		  returning.  Value in A on entry is stored in $0605
+$c0fb		Subroutine
+$c101		Subroutine
+$c104		Subroutine
+$c15e		Subroutine
+$c161		Subroutine
+$c164		Hardware init
+$c168		Low level Hardware I/O routine to send cmd
+$c28a-c2c0	Subroutine - clears any current disk operation, checks drive
+		  number in $00eb, enables motor and NMI interrupt, sets
+		  current track in $ff41 then calls $c0dd with A=0xd2
+$c29c		Some unused Ram hooks JMP here (RTS)
+$c39e-c3b3	Subroutine to enable/disable write-precompensation on disk
+		  controller via bit 4 of $ff48 for a track number (from
+		  $ff41) > 16 
+$c3b4		DSKINIT token dispatch address
+$c508-c539	Subroutine to place a tracks worth of formatting data in
+		  buffer pointed to by $00ee:00ef
+$c544		BACKUP token dispatch address
+$c670		Reserved words token dispatch routine
+$c68b		Function token dispatch routine
+$c6a1-c6b2	Subroutine
+$c6b3		Sub to read drive num by evaluating next
+		  expression, used by DRIVE, BOOT, returns in B
+$c6c5		Ram Hook JMP from System error trap at $0191
+$c706-c71d	RESET Interrupt service routine 
+$c71e-c726	NMI Interrupt service routine
+		  Assumes DP=0xff on NMI occurring - possible bug?
+		  CLRs B and DP, removes 12 bytes from stack, A contains
+		  status at $ff40 on return
+$c727-c74d	IRQ Interrupt service routine
+		  CLRs DP, decrements $0605 if $00f6 == 0x00, if $0605 is
+		  decremented from 0x01 to 0x00, $c75e is called and motor is
+		  stopped
+
+$c75e		Called from IRQ driven motor timeout
+$c7da-c7e0	FIRQ Interrupt service routine
+$c8a8		Subroutine
+$cc12		Subroutine
+$ced2-cee0	Returns FCB data address in X from FCB num(0-9) in $00f1
+$cee1-cef6	Closes all files on current drive in $00e6 by calling
+		  $cef9 with FCB numbers in $00f1
+$cef7-		Closes FCB (0-9) specified in A
+$cef9-		Closes FCB (0-9) specified in $00f1
+$cf3a		Subroutine
+$d0e4		Subroutine - on entry A = FCB number (0-9) stored in $00f1
+$d0f7		Subroutine
+$d123		Subroutine
+$d1a3-		Subroutine called by close FCB at $cef9
+		  If drive online returns B=0, X=ptr 6 bytes of drive details
+		    U ptr drive online flag, A=drive num (0-3)
+$d237		Subroutine
+$d24a		Subroutine
+$d276		Subroutine
+$d2a2		Subroutine - searches for a drive buffer detail block with a
+		  priority of 0x01
+$d2cb		Subroutine
+$d2e2-d326	Subroutine
+$d327		Subroutine
+$d33e		Subroutine
+$d35f		COPY token dispatch address
+$d410		MERGE token dispatch address
+$d4b7		Ram Hook JMP from RUN Link at $0194
+$d4ce		LOAD token dispatch address
+$d562		SAVE token dispatch address
+$d5f9		CHAIN token dispatch address
+$d6c5		Subroutine
+$d6d1		Subroutine
+$d6f5-d70f	Ram Hook JMP from Close file at $0176
+		  Also called from Dskinit routine
+		  Closes all open FCBs and clears drive online flags ($0697)
+$d710-d714	Clears drive online flags & JMPs $ba77
+$d71f		CREATE token dispatch address
+$d767		Subroutine
+$d76d		KILL token dispatch address
+$d77a		PROTECT token dispatch address
+$d79d		RENAME token dispatch address
+$d7be		FLREAD token dispatch address
+$d7f0		FREAD token dispatch address
+$d879		Subroutine
+$d897		FWRITE token dispatch address
+$d8ec		Ram Hook JMP from Verify Device Number at $0161
+$d8f4		Ram Hook JMP from Device Open at $015e
+$d90b		Ram Hook JMP from O/p chr in A to DEVN at $0167
+$d954		Ram Hook JMP from Re-request keyb i/p at $017c
+$da28		DIR token dispatch address
+$dac5		Ram Hook JMP from LINE INPUT from DEVN at $0182
+$dae5		AUTO token dispatch address
+$dba0		BEEP token dispatch address
+$dbc3		WAIT token dispatch address
+$dbd7		SWAP token dispatch address
+$dc08		Subroutine
+$dc0d-dc45	BOOT token dispatch address
+$dc46		DRIVE token dispatch address
+$dc52		ERROR token dispatch address
+$dc82		SREAD token dispatch address
+$dcd1		SWRITE token dispatch address
+$dd3d		VERIFY token dispatch address
+$dd54		Ram Hook JMP from Check EOF on DEVN at $0188
+$dd81		LOC function token dispatch address
+$dd8f		LOF function token dispatch address
+$dda9		FREE function token dispatch address
+$ddc1-ddc6	ERL function token dispatch address
+		  Returns value in $0617:0618 with JMP $8c37
+$ddc7-ddcc	ERR function token dispatch address
+		  Returns value in $0619 as 16bit with JMP $8c37
+$ddcd-ddd0	HIMEM function token dispatch address
+		  Returns value in $0027:0028 with JMP $8c37
+$ddd1-ddd9	FRE$ function token dispatch address
+		  Performs a String space 'Garbage collection' with a call to
+		  $8cd7.  Returns $0023:0024 - $0021:0022 with JMP $8c37
+$ddda-dde9	Indirect jump table of 8 routines
+$ddea-ddfb	18 byte table of sector numbers to create 2:1 interleave when
+		  formatting disk track
+$ddfc		Terminator byte (0x00) for above table
+$ddfd-de23	Data sent to Disk controller during track format
+$de24-de58	Init data in fmt: byte count, dest address, data
+$de24-de2f	0x09, $0109, data for Interrupt vectors
+$de30-de36	0x04, $069f, data for Step rate settings
+$de37-de55	0x1e, $012a, data for Stub 1 and 2
+$de56-de58	0x00, 0x0000 terminator
+$de59-de8c	Reserved words token dispatch table
+$de8d-de9a	Function words token dispatch table
+$de9b-dec0	Ram hook vectors copied to $015e-0196
+$dec1-ded9	Function words table
+$deda-df5a	Reserved words table
+$df5b-df6d	'INSERT SOURCE    ', 0x0d, 0x00
+$df6e-df86	'INSERT DESTINATION     ', 0x0d, 0x00
+$df87-df9d	'PRESS ANY KEY        ', 0x0d, 0x00
+$df9e-dfa9	Extension Table 'BASDATBIN   '
+$dfaa-dfcf	Error code table
+$dfd0-dfd1	'??'
+$dfd2-dfdf	Sign on message 'SUPERDOS E6 ', 0x0d, 0x00
+
+CoCo DOS
+$cbcf		Directory same as DIR (Dragon $da3c) {1}
+$d7ae		NMI Interrupt service routine {1}
+$d7bc		IRQ Interrupt service routine {1}
+
+References
+==========
+
+{1}	'The Dragon Notebook', Ray Smith, NDUG.
+{2}	'Inside the Dragon', Duncan Smeed and Ian Sommerville,
+	   Addison-Wesley, 1983.
+{3}	'TRS-80 Color Computer Tech Ref Manual', Tandy Corp, 1981.
+{4}	WD2797 Floppy Disc Driver Controller Data Sheet (RS Components #6991).
+{5}	Dragon Disc Controller Circuit Diagram, ex Dragon Data Ltd, now NDUG.
+{6}	Dragon 32/64 Upgrade Manual, R. Hall, NDUG, 1985.
+{7}	'Boss Dos', R.E. Warwick, p6, Dragon User, Feb 1987.
+Back to Index

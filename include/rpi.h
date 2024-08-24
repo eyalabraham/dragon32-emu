@@ -15,6 +15,8 @@
 
 #define     DEFAULT_UART_RATE   BAUD_115200
 #define     DEFAULT_SPI0_RATE   2000000     // Keyboard interface Hz bit rate
+#define     MOTOR_LED_DISK      0b00000001
+#define     MOTOR_LED_TAPE      0b00000010
 
 /********************************************************************
  *  RPi bare meta module API
@@ -40,6 +42,9 @@ void     rpi_write_dac(int);
 
 void     rpi_disable(void);
 void     rpi_enable(void);
+
+void     rpi_motor_led_on(uint8_t);
+void     rpi_motor_led_off(uint8_t);
 
 void     rpi_testpoint_on(void);
 void     rpi_testpoint_off(void);

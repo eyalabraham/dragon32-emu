@@ -13,6 +13,7 @@
 void pia_init(void);
 
 void pia_vsync_irq(void);
+void pia_cart_firq(void);
 int  pia_function_key(void);
 
 #endif  /* __PIA_H__ */
