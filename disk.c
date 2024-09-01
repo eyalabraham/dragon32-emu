@@ -249,6 +249,7 @@ void disk_io_interrupt(void)
         }
         else
         {
+            dbg_printf(0, "disk_io_interrupt()[%3d]: unhandled state %d.\n", __LINE__, state);
             rpi_halt();
         }
     }

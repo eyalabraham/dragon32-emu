@@ -191,7 +191,7 @@ uint8_t *rpi_fb_init(int x_pix, int y_pix)
  *  param:  None
  *  return: Pointer to frame buffer, or 0 if error,
  */
-uint8_t *rpi_fb_resolution(int x_pix, int y_pix)
+/* uint8_t *rpi_fb_resolution(int x_pix, int y_pix)
 {
     uint8_t *fbp = 0;
 
@@ -201,7 +201,7 @@ uint8_t *rpi_fb_resolution(int x_pix, int y_pix)
     }
 
     return fbp;
-}
+} */
 
 /*------------------------------------------------
  * rpi_system_timer()

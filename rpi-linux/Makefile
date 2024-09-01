@@ -31,6 +31,7 @@ OUTDIR = ../bin
 CC = gcc
 
 #OPT = -Wall -L/usr/local/lib -lbcm2835 -I $(INCDIR)
+#OPT = -Wall -g -I $(INCDIR)
 OPT = -Wall -I $(INCDIR)
 
 #------------------------------------------------------------------------------------

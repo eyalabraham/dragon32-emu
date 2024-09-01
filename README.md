@@ -159,19 +159,6 @@ The [SAM chip](https://cdn.hackaday.io/files/1685367210644224/datasheet-MC6883_S
 
 The VDG is Motorola's [MC6847](https://en.wikipedia.org/wiki/Motorola_6847) video chip. Since the VDG's video memory is part of the 64K Bytes of the CPU's memory map, then writes to that region are reflected into the RPi's video frame buffer by the IO handler of the VDG. The handler will adapt the writes to the RPi frame buffer based on the VDG/SAM modes for text or graphics. The Dragon computer video display emulation is implemented in the VDG module by the ```vdg_render()``` function, by accessing the Raspberry Pi Frame Buffer.
 
-#### ```vdg_render()``` performance
-
-VDG rendering routine takes advantage of 32-bit architecture of the RPi frame-buffer writes. Only the text screen modes benefit from this and reduce the render time by 25%. Graphics screens had no change or showed worse timing. A potential use of Raspberry Pi Zero 2 (dual-core) might be useful here.
-
-| Function                      | Frame buffer pixels | Baseline  | 32-bit write | 
-|-------------------------------|---------------------|-----------|--------------|
-| Text                          | 49,152              | 4.00 mSec | 2.75 mSec    |
-| Graphics 128x96  BW (PMODE 0) | 12,288              | 0.80 mSec | worse        |
-| Graphics 128x96  C  (PMODE 1) | 12,288              | 1.30 mSec | 1.40 mSec    |
-| Graphics 192x128 BW (PMODE 2) | 49,152              | 2.20 mSec | worse        |
-| Graphics 192x128 C  (PMODE 3) | 49,152              | 3.15 mSec | 3.60 mSec    |
-| Graphics 256x192 BW (PMODE 4) | 49,152              | 3.30 mSec | worse        |
-
 #### WD2797 floppy disk controller
 
 WD2797 floppy disk controller and Dragon DOS ROM provides full emulation for using Dragon Dos formatted disk images loaded on SD card. Disk image loader supports the .VDK disk image format and loads disks using the loader sub-program accessible by escaping the emulation using the keyboard F1 key.  
@@ -316,9 +303,12 @@ The new emulator loop includes CPU execution (line 95), dead-time padding (line 
 ```
 .
 ├── bin
-│   └── <empty>
+│   └── <binary-output>
 ├── boot
-│   └── <empty>
+│   └── <bare-metal-boot-file>
+├── doc
+│   ├── DragonDOS-info.txt
+│   └── dragon.pdf
 ├── include
 │   ├── dragon
 │   │   ├── ddos10.h
@@ -339,18 +329,19 @@ The new emulator loop includes CPU execution (line 95), dead-time padding (line 
 │   │   ├── bcm2835.h
 │   │   ├── spiaux.h
 │   │   └── uart.h
-│   ├── config.h
-│   ├── cpu.h
-│   ├── disk.h
 │   ├── errors.h
 │   ├── fat32.h
 │   ├── loader.h
 │   ├── mc6809e.h
 │   ├── mem.h
 │   ├── pia.h
-│   ├── rpi.h
 │   ├── printf_config.h
 │   ├── printf.h
+│   ├── rpi.h
+│   ├── config.h
+│   ├── cpu.h
+│   ├── dbgmsg.h
+│   ├── disk.h
 │   ├── sam.h
 │   ├── sd.h
 │   ├── trace.h
@@ -375,19 +366,20 @@ The new emulator loop includes CPU execution (line 95), dead-time padding (line 
 │   └── uart.c
 ├── LICENSE.md
 ├── README.md
-├── cpu.c
-├── disk.c
-├── dragon.c
-├── DragonDOS-info.txt
-├── fat32.c
 ├── loader.c
 ├── Makefile
 ├── mem.c
 ├── pia.c
 ├── printf.c
+├── cpu.c
+├── dbgmsg.c
+├── disk.c
+├── dragon.c
+├── fat32.c
 ├── sam.c
 ├── sd.c
 ├── trace.c
 └── vdg.c
+
 
 ```

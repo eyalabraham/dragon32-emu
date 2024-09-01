@@ -1,7 +1,7 @@
 {
     "env": {
         "myDefines": [
-            "RPI_BARE_METAL=1",
+            "RPI_BARE_METAL=0",
         ]
     },
     "configurations": [

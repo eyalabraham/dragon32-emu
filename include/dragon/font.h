@@ -12,9 +12,8 @@
 
 #include    <stdint.h>
 
-/* Dragon computer font is a 5x7 dot matrix that fits into a 12x8
- * overall matrix box. The font code below will start at row
- * index 3 (0-based)
+/* Dragon computer font is a 5x7 dot matrix that fits into a 8x12
+ * overall matrix box.
  */
 #define     FONT_HEIGHT         12
 #define     FONT_WIDTH          8

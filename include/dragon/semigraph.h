@@ -12,7 +12,7 @@
 
 #include    <stdint.h>
 
-/* Dragon computer 12x12 semigraphics bit patterns
+/* Dragon computer 8x12 semigraphics bit patterns
  */
 
 uint8_t const semi_graph_4[][12] = {

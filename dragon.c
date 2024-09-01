@@ -40,11 +40,7 @@
 #define     DRAGON_ROM_END          0xfeff
 #define     ESCAPE_LOADER           1       // Pressing F1
 #define     LONG_RESET_DELAY        1500000 // Micro-seconds to force cold start
-#if (RPI_BARE_METAL==1)
-  #define     VDG_RENDER_CYCLES     5625    // CPU cycle count for ~20mSec screen refresh rate
-#else
-  #define     VDG_RENDER_CYCLES     12500   // CPU cycle count for ~20mSec screen refresh rate
-#endif
+#define     VDG_REFRESH_INTERVAL    ((uint32_t)(1000000/50))
 
 /********** Trace / Breakpoint **********/
 #if (RPI_BARE_METAL==0)
@@ -70,9 +66,9 @@ static int get_reset_state(uint32_t time);
     int main(int argc, char *argv[])
 #endif
 {
-    int     i;
-    int     emulator_escape_code;
-    int     vdg_render_cycles = 0;
+    uint32_t    last_refresh_time;
+    int         i;
+    int         emulator_escape_code;
 
     /* System GPIO initialization
      */
@@ -127,6 +123,8 @@ static int get_reset_state(uint32_t time);
     dbg_printf(1, "Starting CPU.\n");
     cpu_reset(1);
 
+    last_refresh_time = rpi_system_timer();
+
     for (;;)
     {
         //rpi_testpoint_on();
@@ -160,14 +158,13 @@ static int get_reset_state(uint32_t time);
         if ( emulator_escape_code == ESCAPE_LOADER )
             loader();
 
-        vdg_render_cycles++;
-        if ( vdg_render_cycles == VDG_RENDER_CYCLES )
+        if ( (rpi_system_timer() - last_refresh_time) >= VDG_REFRESH_INTERVAL )
         {
-            //rpi_testpoint_on();
+            last_refresh_time = rpi_system_timer();
+            rpi_testpoint_on();
             vdg_render();
-            //rpi_testpoint_off();
+            rpi_testpoint_off();
             pia_vsync_irq();
-            vdg_render_cycles = 0;
         }
         
         /********** Trace / Breakpoint **********/
