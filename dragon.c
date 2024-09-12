@@ -161,9 +161,9 @@ static int get_reset_state(uint32_t time);
         if ( (rpi_system_timer() - last_refresh_time) >= VDG_REFRESH_INTERVAL )
         {
             last_refresh_time = rpi_system_timer();
-            rpi_testpoint_on();
+            //rpi_testpoint_on();
             vdg_render();
-            rpi_testpoint_off();
+            //rpi_testpoint_off();
             pia_vsync_irq();
         }
         

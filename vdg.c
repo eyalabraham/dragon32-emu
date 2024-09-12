@@ -12,7 +12,6 @@
  *******************************************************************/
 
 #include    <stdint.h>
-#include    <string.h>
 
 #include    "cpu.h"
 #include    "mem.h"
@@ -341,13 +340,18 @@ void vdg_set_mode_pia(uint8_t pia_mode)
 void vdg_render_alpha_semi4(int vdg_mem_base)
 {
     int         c, row, col, font_row, font_col;
-    int         char_index, buffer_index, row_address;
+    int         char_index, row_address;
     uint8_t     bit_pattern, pix_pos;
-    uint8_t     fg_color, bg_color, tmp;
+    uint8_t     color_set, fg_color, bg_color, tmp;
 
     uint8_t    *screen_buffer;
 
     screen_buffer = fbp;
+
+    if ( pia_video_mode & PIA_COLOR_SET )
+        color_set = colors[DEF_COLOR_CSS_1];
+    else
+        color_set = colors[DEF_COLOR_CSS_0];
 
     for ( row = 0; row < SCREEN_HEIGHT_CHAR; row++ )
     {
@@ -355,9 +359,6 @@ void vdg_render_alpha_semi4(int vdg_mem_base)
         
         for ( font_row = 0; font_row < FONT_HEIGHT; font_row++ )
         {
-            memset(pixel_row, FB_BLACK, sizeof(pixel_row));
-            buffer_index = 0;
-
             for ( col = 0; col < SCREEN_WIDTH_CHAR; col++ )
             {
                 c = mem_read(col + row_address);
@@ -379,10 +380,7 @@ void vdg_render_alpha_semi4(int vdg_mem_base)
                 }
                 else
                 {
-                    if ( pia_video_mode & PIA_COLOR_SET )
-                        fg_color = colors[DEF_COLOR_CSS_1];
-                    else
-                        fg_color = colors[DEF_COLOR_CSS_0];
+                    fg_color = color_set;
 
                     if ( (uint8_t)c & CHAR_INVERSE )
                     {
@@ -404,13 +402,13 @@ void vdg_render_alpha_semi4(int vdg_mem_base)
                     */
                     if ( (bit_pattern & pix_pos) )
                     {
-                        pixel_row[buffer_index++] = fg_color;
+                        *screen_buffer++ = fg_color;
                     }
                     /* Bit is cleared in Font
                     */
                     else
                     {
-                        pixel_row[buffer_index++] = bg_color;
+                        *screen_buffer++ = bg_color;
                     }
 
                     /* Move to the next pixel position
@@ -418,11 +416,6 @@ void vdg_render_alpha_semi4(int vdg_mem_base)
                     pix_pos = pix_pos >> 1;
                 }
             }
-
-            /* Copy row of pixels to frame buffer.
-             */
-            memcpy(screen_buffer, pixel_row, SCREEN_WIDTH_PIX);
-            screen_buffer += SCREEN_WIDTH_PIX;
         }
     }
 }
@@ -438,14 +431,15 @@ void vdg_render_alpha_semi4(int vdg_mem_base)
  */
 static void vdg_render_semi6(int vdg_mem_base)
 {
-    int         c, row, col, font_row, font_col;
-    int         char_index, buffer_index, row_address;
+    int         c, row, col, font_row, font_col, color_set;
+    int         char_index, row_address;
     uint8_t     bit_pattern, pix_pos;
     uint8_t     fg_color, bg_color;
 
     uint8_t    *screen_buffer;
 
     screen_buffer = fbp;
+    color_set = (int)(4 * (pia_video_mode & PIA_COLOR_SET));
 
     for ( row = 0; row < SCREEN_HEIGHT_CHAR; row++ )
     {
@@ -453,15 +447,12 @@ static void vdg_render_semi6(int vdg_mem_base)
 
         for ( font_row = 0; font_row < FONT_HEIGHT; font_row++ )
         {
-            memset(pixel_row, FB_BLACK, sizeof(pixel_row));
-            buffer_index = 0;
-
             for ( col = 0; col < SCREEN_WIDTH_CHAR; col++ )
             {
                 c = mem_read(col + row_address);
 
                 bg_color = FB_BLACK;
-                fg_color = colors[(int)(((c & 0b11000000) >> 6) + (4 * (pia_video_mode & PIA_COLOR_SET)))];
+                fg_color = colors[(int)(((c & 0b11000000) >> 6) + color_set)];
 
                 char_index = (int)(((uint8_t) c) & SEMI_GRAPH6_MASK);
                 bit_pattern = semi_graph_6[char_index][font_row];
@@ -476,13 +467,13 @@ static void vdg_render_semi6(int vdg_mem_base)
                     */
                     if ( (bit_pattern & pix_pos) )
                     {
-                        pixel_row[buffer_index++] = fg_color;
+                        *screen_buffer++ = fg_color;
                     }
                     /* Bit is cleared in Font
                     */
                     else
                     {
-                        pixel_row[buffer_index++] = bg_color;
+                        *screen_buffer++ = bg_color;
                     }
 
                     /* Move to the next pixel position
@@ -490,11 +481,6 @@ static void vdg_render_semi6(int vdg_mem_base)
                     pix_pos = pix_pos >> 1;
                 }
             }
-
-            /* Copy row of pixels to frame buffer.
-             */
-            memcpy(screen_buffer, pixel_row, SCREEN_WIDTH_PIX);
-            screen_buffer += SCREEN_WIDTH_PIX;
         }
     }
 }
@@ -514,14 +500,19 @@ static void vdg_render_semi_ext(video_mode_t mode, int vdg_mem_base)
 {
     int         row, seg_row, scan_line, col, font_col, font_row;
     int         segments, seg_scan_lines;
-    int         c, char_index, buffer_index, row_address;
+    int         c, char_index, row_address;
     uint8_t     bit_pattern, pix_pos;
-    uint8_t     fg_color, bg_color, tmp;
+    uint8_t     color_set, fg_color, bg_color, tmp;
 
     uint8_t    *screen_buffer;
 
     screen_buffer = fbp;
     font_row = 0;
+
+    if ( pia_video_mode & PIA_COLOR_SET )
+        color_set = colors[DEF_COLOR_CSS_1];
+    else
+        color_set = colors[DEF_COLOR_CSS_0];
 
     if ( mode == SEMI_GRAPHICS_8 )
     {
@@ -551,9 +542,6 @@ static void vdg_render_semi_ext(video_mode_t mode, int vdg_mem_base)
 
             for ( scan_line = 0; scan_line < seg_scan_lines; scan_line++ )
             {
-                memset(pixel_row, FB_BLACK, sizeof(pixel_row));
-                buffer_index = 0;
-
                 for ( col = 0; col < SCREEN_WIDTH_CHAR; col++ )
                 {
                     c = mem_read(col + row_address);
@@ -575,10 +563,7 @@ static void vdg_render_semi_ext(video_mode_t mode, int vdg_mem_base)
                     }
                     else
                     {
-                        if ( pia_video_mode & PIA_COLOR_SET )
-                            fg_color = colors[DEF_COLOR_CSS_1];
-                        else
-                            fg_color = colors[DEF_COLOR_CSS_0];
+                        fg_color = color_set;
 
                         if ( (uint8_t)c & CHAR_INVERSE )
                         {
@@ -600,13 +585,13 @@ static void vdg_render_semi_ext(video_mode_t mode, int vdg_mem_base)
                         */
                         if ( (bit_pattern & pix_pos) )
                         {
-                            pixel_row[buffer_index++] = fg_color;
+                            *screen_buffer++ = fg_color;
                         }
                         /* Bit is cleared in Font
                         */
                         else
                         {
-                            pixel_row[buffer_index++] = bg_color;
+                            *screen_buffer++ = bg_color;
                         }
 
                         /* Move to the next pixel position
@@ -614,11 +599,6 @@ static void vdg_render_semi_ext(video_mode_t mode, int vdg_mem_base)
                         pix_pos = pix_pos >> 1;
                     }
                 }
-
-                /* Copy row of pixels to frame buffer.
-                */
-                memcpy(screen_buffer, pixel_row, SCREEN_WIDTH_PIX);
-                screen_buffer += SCREEN_WIDTH_PIX;
 
                 font_row++;
                 if ( font_row == FONT_HEIGHT )
@@ -631,7 +611,8 @@ static void vdg_render_semi_ext(video_mode_t mode, int vdg_mem_base)
 /*------------------------------------------------
  * vdg_render_resl_graph()
  *
- * Render resolution graphics modes.
+ *  Render resolution graphics modes:
+ *  GRAPHICS_1R, GRAPHICS_2R, GRAPHICS_3R, and GRAPHICS_6R.
  *
  * param:  Mode, base address of video memory buffer.
  * return: none
@@ -639,16 +620,14 @@ static void vdg_render_semi_ext(video_mode_t mode, int vdg_mem_base)
  */
 static void vdg_render_resl_graph(video_mode_t mode, int vdg_mem_base)
 {
-    int         i, vdg_mem_offset, element, buffer_index;
-    int         video_mem, pixel_rep, row_rep;
+    int         i, j, vdg_mem_offset, element, buffer_index;
+    int         video_mem, row_rep;
     uint8_t     pixels_byte, fg_color, pixel;
     uint8_t    *screen_buffer;
 
     screen_buffer = fbp;
 
-    memset(pixel_row, FB_BLACK, sizeof(pixel_row));
     video_mem = resolution[mode][RES_MEM];
-    pixel_rep = resolution[mode][RES_PIXEL_REP];
     row_rep = resolution[mode][RES_ROW_REP];
     buffer_index = 0;
 
@@ -676,22 +655,21 @@ static void vdg_render_resl_graph(video_mode_t mode, int vdg_mem_base)
                 pixel = FB_BLACK;
             }
 
-            for ( i = 0; i < pixel_rep; i++ )
-            {
-                pixel_row[buffer_index] = pixel;
-                buffer_index++;
-            }
+            pixel_row[buffer_index++] = pixel;
+            if ( mode != GRAPHICS_6R )
+                pixel_row[buffer_index++] = pixel;
         }
 
         if ( buffer_index >= SCREEN_WIDTH_PIX )
         {
             for ( i = 0; i < row_rep; i++ )
             {
-                memcpy(screen_buffer, pixel_row, SCREEN_WIDTH_PIX);
-                screen_buffer += SCREEN_WIDTH_PIX;
+                for ( j = 0; j < SCREEN_WIDTH_PIX; j++ )
+                {
+                    *screen_buffer++ = pixel_row[j];
+                }
             }
 
-            memset(pixel_row, FB_BLACK, sizeof(pixel_row));
             buffer_index = 0;
         }
     }
@@ -700,7 +678,8 @@ static void vdg_render_resl_graph(video_mode_t mode, int vdg_mem_base)
 /*------------------------------------------------
  * vdg_render_color_graph()
  *
- * Render color graphics modes.
+ *  Render color graphics modes:
+ *  GRAPHICS_1C, GRAPHICS_2C, GRAPHICS_3C, and GRAPHICS_6C.
  *
  * param:  Mode, base address of video memory buffer.
  * return: none
@@ -708,16 +687,14 @@ static void vdg_render_resl_graph(video_mode_t mode, int vdg_mem_base)
  */
 static void vdg_render_color_graph(video_mode_t mode, int vdg_mem_base)
 {
-    int         i, vdg_mem_offset, element, buffer_index;
-    int         video_mem, pixel_rep, row_rep, color_set, color;
+    int         i, j, vdg_mem_offset, element, buffer_index;
+    int         video_mem, row_rep, color_set, color;
     uint8_t     pixels_byte, pixel;
     uint8_t    *screen_buffer;
 
     screen_buffer = fbp;
 
-    memset(pixel_row, FB_BLACK, sizeof(pixel_row));
     video_mem = resolution[mode][RES_MEM];
-    pixel_rep = resolution[mode][RES_PIXEL_REP];
     row_rep = resolution[mode][RES_ROW_REP];
     color_set = 4 * (pia_video_mode & PIA_COLOR_SET);
     buffer_index = 0;
@@ -731,22 +708,26 @@ static void vdg_render_color_graph(video_mode_t mode, int vdg_mem_base)
             color = (int)((pixels_byte >> element) & 0x03) + color_set;
             pixel = colors[color];
 
-            for ( i = 0; i < pixel_rep; i++ )
+            pixel_row[buffer_index++] = pixel;
+            pixel_row[buffer_index++] = pixel;
+            if ( mode == GRAPHICS_1C )
             {
-                pixel_row[buffer_index] = pixel;
-                buffer_index++;
+                pixel_row[buffer_index++] = pixel;
+                pixel_row[buffer_index++] = pixel;
             }
+
         }
 
         if ( buffer_index >= SCREEN_WIDTH_PIX )
         {
             for ( i = 0; i < row_rep; i++ )
             {
-                memcpy(screen_buffer, pixel_row, SCREEN_WIDTH_PIX);
-                screen_buffer += SCREEN_WIDTH_PIX;
+                for ( j = 0; j < SCREEN_WIDTH_PIX; j++ )
+                {
+                    *screen_buffer++ = pixel_row[j];
+                }
             }
 
-            memset(pixel_row, FB_BLACK, sizeof(pixel_row));
             buffer_index = 0;
         }
     }

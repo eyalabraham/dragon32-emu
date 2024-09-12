@@ -83,8 +83,9 @@ BOOTDIR = $(BASE)/boot
 #ARMARCH = -march=armv6zk -mtune=arm1176jzf-s -mfpu=vfp
 #CCFLAGS = -I $(INCDIR) -O0 -Wall -mfloat-abi=hard $(ARMARCH)
 
-ARMARCH = -march=armv6zk -mtune=arm1176jzf-s
-CCFLAGS = -O2 -Wall -ffreestanding -mfloat-abi=soft $(ARMARCH)
+ARMARCH = -march=armv6kz -mtune=arm1176jzf-s
+#CCFLAGS = -O2 -Wall -ffreestanding -mfpu=vfp -mfloat-abi=soft $(ARMARCH)
+CCFLAGS = -Ofast -Wall -ffreestanding $(ARMARCH)
 
 ASFLAGS = --no-pad-sections
 LDFLAGS = -z max-page-size=1024
