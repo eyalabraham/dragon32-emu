@@ -24,7 +24,6 @@
 int      rpi_gpio_init(void);
 
 uint8_t *rpi_fb_init(int h, int v);
-//uint8_t *rpi_fb_resolution(int h, int v);
 
 uint32_t rpi_system_timer(void);
 

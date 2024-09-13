@@ -41,6 +41,7 @@
 #define     ESCAPE_LOADER           1       // Pressing F1
 #define     LONG_RESET_DELAY        1500000 // Micro-seconds to force cold start
 #define     VDG_REFRESH_INTERVAL    ((uint32_t)(1000000/50))
+#define     HALF_SECOND             ((uint32_t)(500000))
 
 /********** Trace / Breakpoint **********/
 #if (RPI_BARE_METAL==0)
@@ -67,7 +68,7 @@ static int get_reset_state(uint32_t time);
 #endif
 {
     uint32_t    last_refresh_time;
-    int         i;
+    int         i, no_disk;
     int         emulator_escape_code;
 
     /* System GPIO initialization
@@ -94,18 +95,6 @@ static int get_reset_state(uint32_t time);
     dbg_printf(0, "Dragon 32 %s %s\n", __DATE__, __TIME__);
     dbg_printf(0, "Debug level = %d\n", DEBUG_LVL);
 
-    /* ROM code load
-     */
-    dbg_printf(1, "Loading ROM.\n");
-
-    mem_load(LOAD_ADDRESS, code, sizeof(code));
-    dbg_printf(2, "  Loaded Dragon 32, %i bytes.\n", sizeof(code));
-
-    mem_load(DDOS_LOAD_ADDRESS, ddos10p_code, sizeof(ddos10p_code));
-    dbg_printf(2, "  Loaded Dragon DOS 1.0p, %i bytes.\n", sizeof(ddos10p_code));
-
-    mem_define_rom(DRAGON_ROM_START, DRAGON_ROM_END);
-
     /* Emulation initialization
      */
     dbg_printf(1, "Initializing peripherals.\n");
@@ -113,7 +102,34 @@ static int get_reset_state(uint32_t time);
     sam_init();
     pia_init();
     vdg_init();
-    disk_init();
+
+    /* If joystick button is pressed during bootup
+     * then don't install disk support.
+     */
+    no_disk = 0;
+    if ( rpi_rjoystk_button() == 0 )
+    {
+        last_refresh_time = rpi_system_timer();
+        while ( (rpi_system_timer() - last_refresh_time) < HALF_SECOND );
+        if ( rpi_rjoystk_button() == 0 )
+            no_disk = 1;
+    }
+
+    /* ROM code load
+     */
+    dbg_printf(1, "Loading ROM.\n");
+
+    mem_load(LOAD_ADDRESS, code, sizeof(code));
+    dbg_printf(2, "  Loaded Dragon 32, %i bytes.\n", sizeof(code));
+
+    if ( !no_disk )
+    {
+        disk_init();
+        mem_load(DDOS_LOAD_ADDRESS, ddos10p_code, sizeof(ddos10p_code));
+        dbg_printf(2, "  Loaded Dragon DOS 1.0p, %i bytes.\n", sizeof(ddos10p_code));
+    }
+
+    mem_define_rom(DRAGON_ROM_START, DRAGON_ROM_END);
 
     dbg_printf(2, "Initializing CPU.\n");
     cpu_init(RUN_ADDRESS);
