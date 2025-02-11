@@ -14,6 +14,8 @@
         "spiaux.h": "c",
         "fat32.h": "c",
         "dragon.h": "c",
-        "ddos12.h": "c"
+        "ddos12.h": "c",
+        "dbgmsg.h": "c",
+        "cpu.h": "c"
     }
 }

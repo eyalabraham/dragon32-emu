@@ -29,7 +29,8 @@ typedef enum
 void loader_init(void);
 void loader(void);
 
-int  loader_cas_fread(uint8_t*, uint16_t);
+int  loader_tape_fread(uint8_t*, uint16_t);
+int  loader_tape_fwrite(uint8_t*, uint16_t);
 
 int  loader_disk_fread(uint8_t*, uint16_t);
 int  loader_disk_fwrite(uint8_t*, uint16_t);

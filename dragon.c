@@ -24,6 +24,7 @@
 #include    "vdg.h"
 #include    "pia.h"
 #include    "disk.h"
+#include    "tape.h"
 #include    "fat32.h"
 #include    "loader.h"
 
@@ -36,6 +37,8 @@
 /* -----------------------------------------
    Module definition
 ----------------------------------------- */
+#define     IO_TRAP                 0
+
 #define     DRAGON_ROM_START        0x8000
 #define     DRAGON_ROM_END          0xfeff
 #define     ESCAPE_LOADER           1       // Pressing F1
@@ -43,12 +46,13 @@
 #define     VDG_REFRESH_INTERVAL    ((uint32_t)(1000000/50))
 #define     HALF_SECOND             ((uint32_t)(500000))
 
-/********** Trace / Breakpoint **********/
+/**** Trace / Breakpoint / IO trap ******/
 #if (RPI_BARE_METAL==0)
 cpu_state_t     cpu_state;
 cpu_run_state_t run_state;
 int             breakpoint_trigger = 0;
-uint16_t        breakpoint = 0xc179;        // 'DOSLowLevel' 0xc169 line #4024
+uint16_t        breakpoint = 0xBE12;        // 'DOSLowLevel' 0xc169 line #4024
+uint16_t        io_trap_addr = 0xff20;      // IO trap address
 #endif
 /****************************************/
 
@@ -56,6 +60,7 @@ uint16_t        breakpoint = 0xc179;        // 'DOSLowLevel' 0xc169 line #4024
    Module functions
 ----------------------------------------- */
 static int get_reset_state(uint32_t time);
+static uint8_t io_trap(uint16_t address, uint8_t data, mem_operation_t op);
 
 /*------------------------------------------------
  * main()
@@ -102,6 +107,7 @@ static int get_reset_state(uint32_t time);
     sam_init();
     pia_init();
     vdg_init();
+    tape_init();
 
     /* If joystick button is pressed during bootup
      * then don't install disk support.
@@ -130,6 +136,17 @@ static int get_reset_state(uint32_t time);
     }
 
     mem_define_rom(DRAGON_ROM_START, DRAGON_ROM_END);
+
+    /*************** IO trap ****************/
+#if (RPI_BARE_METAL==0 && IO_TRAP==1)
+
+    /* NOTE: this trap will override any IO handers set
+     * previousely. This might break emulation functionality!
+     */
+    mem_define_io(io_trap_addr, io_trap_addr, io_trap);
+
+#endif
+    /****************************************/
 
     dbg_printf(2, "Initializing CPU.\n");
     cpu_init(RUN_ADDRESS);
@@ -248,4 +265,24 @@ static int get_reset_state(uint32_t time)
     }
 
     return reset_type;
+}
+
+/*------------------------------------------------
+ * io_trap()
+ *
+ * Output IO trap details to stdout.
+ *
+ *  param:  Call address, data byte for write operation, and operation type
+ *  return: Status or data byte
+ *
+ */
+static uint8_t io_trap(uint16_t address, uint8_t data, mem_operation_t op)
+{
+#if (RPI_BARE_METAL==0)
+    cpu_get_state(&cpu_state);
+    dbg_printf(0, "io_trap(): io address=0x%04x data=0x%02x (%c) pc=0x%04x last pc=0x%04x\n",
+                              address, data, (op ? 'W' : 'R'), cpu_state.pc, cpu_state.last_pc);
+#endif
+
+    return data;
 }

@@ -23,34 +23,34 @@ The emulator will also be implemented with hardware: keyboard interface (PS2 thr
 ASCII art depiction of the system for the RPi bare metal implementation:
 
 ```
-  +-------------------------------------+               |
-  | Monitor (via Auxiliary UART)        |               |
-  |  Logger                             |               |
-  |  Monitor CLI                        |               |
-  +-------------------------------------+               |
-     |          |                |                      |
-  +-----+  +----------+  +---------------------+ Software emulation
-  | CPU |--|   MEM    |--|          IO         |        |
-  +-----+  +----------+  |                     |        |
-                |        |                     |        |
-           +----------+  |       |      |      |        |
-           | Graphics |  | SAM   | PIA  | Disk |        |
-           | xlate    |--| VGD   |      |      |        |
-           +----------+  +-------+-------------+        |
-                |                    |                ------
-           +----------+          +------+               |
-           | RPi      |          | RPi  |               |
-           | frame    |          | GPIO |            RPi HW
-           | buff     |          |      |               |
-           +----------+          +------+               |
-                 |                   |                ------
-           +----------+      +---------------+          |
-           | VGA      |      | Devices:      |          |
-           | Monitor  |      |  PS2 Keyboard |      External HW
-           +----------+      |  Joystick     |          |
-                             |  Audio DAC    |          |
-                             |  SD card      |          |
-                             +---------------+          |
+  +-------------------------------------+                  |
+  | Monitor (via Auxiliary UART)        |                  |
+  |  Logger                             |                  |
+  |  Monitor CLI                        |                  |
+  +-------------------------------------+                  |
+     |          |                |                 Software emulation
+  +-----+  +----------+  +----------------------------+    |
+  | CPU |--|   MEM    |--|          IO                |    |
+  +-----+  +----------+  |                            |    |
+                |        |                            |    |
+           +----------+  |       |      |      |      |    |
+           | Graphics |  | SAM   | PIA  | Disk | Tape |    |
+           | xlate    |--| VGD   |      |      |      |    |
+           +----------+  +-------+-------------+------+    |
+                |                    |                   ------
+           +----------+          +------+                  |
+           | RPi      |          | RPi  |                  |
+           | frame    |          | GPIO |               RPi HW
+           | buff     |          |      |                  |
+           +----------+          +------+                  |
+                 |                   |                   ------
+           +----------+      +---------------+             |
+           | VGA      |      | Devices:      |             |
+           | Monitor  |      |  PS2 Keyboard |         External HW
+           +----------+      |  Joystick     |             |
+                             |  Audio DAC    |             |
+                             |  SD card      |             |
+                             +---------------+             |
 ```
 
 ## Schematics
@@ -159,6 +159,10 @@ The [SAM chip](https://cdn.hackaday.io/files/1685367210644224/datasheet-MC6883_S
 
 The VDG is Motorola's [MC6847](https://en.wikipedia.org/wiki/Motorola_6847) video chip. Since the VDG's video memory is part of the 64K Bytes of the CPU's memory map, then writes to that region are reflected into the RPi's video frame buffer by the IO handler of the VDG. The handler will adapt the writes to the RPi frame buffer based on the VDG/SAM modes for text or graphics. The Dragon computer video display emulation is implemented in the VDG module by the ```vdg_render()``` function, by accessing the Raspberry Pi Frame Buffer.
 
+#### Casette tape emulation
+
+The emulator implements a memory write trap on the 'CasLastSine' memory address. This memory address is used by a Drafgon 32 ROM routine that outputs a byte to tape. This method captures every data byte output to tape creating a CAS file formated image that can then be loaded back when needed. The implementation has two parts, the tape data load part is implemented in the ```pia.c``` module and the data save part in the ```tape.c``` module.
+
 #### WD2797 floppy disk controller
 
 WD2797 floppy disk controller and Dragon DOS ROM provides full emulation for using Dragon Dos formatted disk images loaded on SD card. Disk image loader supports the .VDK disk image format and loads disks using the loader sub-program accessible by escaping the emulation using the keyboard F1 key.  
@@ -222,11 +226,15 @@ In the Dragon computer, the system generates an IRQ interrupt at the frame synch
 
 ### Software loader
 
-The software loader/manager interfaces with an SD card that holds Dragon 32 ROM cartridge images and CAS files. The loader/manager can be escaped into from the emulation using the F1 key. Within the loader one can brows ROM and CAS files to load and run on the Dragon 32 emulator.
+The software loader/manager interfaces with an SD card that holds Dragon 32 ROM cartridge images, VDK diskette images, tape images, and CAS files. The loader/manager can be escaped into from the emulation using the F1 key. Within the loader one can brows ROM, VDK, tape, and CAS files to load and run on the Dragon 32 emulator.
 
 This functionality is available only on RPi Zero/W and uses an SD card interface connected to the auxiliary SPI interface (SPI1).
 
 ROM code files are loaded as-is into the Dragon's ROM cartridge memory address space. No auto start is provided, but the BASIC EXEC vector is modified to point to 0xC000, so a simple EXEC from the BASIC prompt will start the ROM code.
+
+VDK file are diskette image file. Selecting a VDK file "mounts" the diskette and DragonDOS commands mange it as if a diskette drive is connected to the Dragon 32 computer.
+
+Tape image files act as tales loaded on an external tape recorder system. You can use CSAVE/M, CLOAD/M, SKIPF commands to save load and scan/skip files ona tape. This file type behaves exactly like a tape cassette storing data sequentially in the tape image file, so care must be taken not to overwrite files.
 
 CAS files are digital images of old-style tape content and not memory images. More on [CAS file formats here](https://retrocomputing.stackexchange.com/questions/150/what-format-is-used-for-coco-cassette-tapes/153#153), and [Dragon 32 CAS format here](https://archive.worldofdragon.org/index.php?title=Tape%5CDisk_Preservation#CAS_File_Format). A cassette file can be mounted by the loader (like loading a cassette into a tape player), and then use the BASIC CLOAD or CLOADM commands to do the reading.
 
@@ -342,6 +350,7 @@ The new emulator loop includes CPU execution (line 95), dead-time padding (line 
 │   ├── cpu.h
 │   ├── dbgmsg.h
 │   ├── disk.h
+│   ├── tape.h
 │   ├── sam.h
 │   ├── sd.h
 │   ├── trace.h
@@ -374,6 +383,7 @@ The new emulator loop includes CPU execution (line 95), dead-time padding (line 
 ├── cpu.c
 ├── dbgmsg.c
 ├── disk.c
+├── tape.c
 ├── dragon.c
 ├── fat32.c
 ├── sam.c

@@ -276,7 +276,9 @@ error_t sd_read_block(uint32_t lba, uint8_t *buffer, uint16_t length)
 /* -------------------------------------------------------------
  * sd_write_block()
  *
- *  Write a block (sector) to SD card
+ *  Write a block (sector) to SD card.
+ *  Data buffer must be at least SD_BLOCK_SIZE in size,
+ *  if larger, only the first SD_BLOCK_SIZE bytes will be written.
  *
  *  Param:  LBA number, buffer address, and its length
  *  Return: Driver error
@@ -285,6 +287,8 @@ error_t sd_write_block(uint32_t lba, uint8_t *buffer, uint16_t length)
 {
     uint8_t sd_response;
     uint16_t crc;
+
+    static uint8_t temp_buffer[SD_BLOCK_SIZE];
 
     if ( length < SD_BLOCK_SIZE ||  !sd_initialized )
     {
@@ -306,6 +310,11 @@ error_t sd_write_block(uint32_t lba, uint8_t *buffer, uint16_t length)
         return SD_WRITE_FAIL;
     }
 
+    /* Copy data to a temporary buffer becasue SPI writes clobber
+     * existing data in the buffer.
+     */
+    memcpy(temp_buffer, buffer, SD_BLOCK_SIZE);
+
     spi_aux_transfer_byte(SPI_FILL_BYTE);
     spi_aux_transfer_byte(SPI_FILL_BYTE);
 
@@ -314,7 +323,7 @@ error_t sd_write_block(uint32_t lba, uint8_t *buffer, uint16_t length)
     crc = sd_get_crc16(buffer, SD_BLOCK_SIZE);
 
     spi_aux_transfer_byte(SD_TOKEN_START_BLOCK);
-    spi_aux_transfer_buffer(buffer, SD_BLOCK_SIZE);
+    spi_aux_transfer_buffer(temp_buffer, SD_BLOCK_SIZE);
     spi_aux_transfer_byte((crc >> 8) & 0xff);
     spi_aux_transfer_byte(crc & 0xff);
 

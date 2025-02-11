@@ -34,7 +34,7 @@ CCFLAGS += -D$(PIMODEL) -DRPI_BARE_METAL=1
 #------------------------------------------------------------------------------------
 OBJDRAGON = start.o ../dragon.o \
             ../mem.o ../cpu.o \
-            ../sam.o ../pia.o ../vdg.o ../disk.o \
+            ../sam.o ../pia.o ../vdg.o ../disk.o ../tape.o \
             ../printf.o ../dbgmsg.o ../sd.o ../fat32.o ../loader.o \
             rpibm.o gpio.o auxuart.o timer.o spi0.o spi1.o mailbox.o irq.o irq_util.o
 

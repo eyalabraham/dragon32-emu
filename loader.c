@@ -53,7 +53,7 @@
 #define     MSG_CAS_FILE_MOUNTED    "CAS FILE MOUNTED.               "
 #define     MSG_DISK_IMG_MOUNTED    "DISK IMAGE MOUNTED.             "
 
-#define     CODE_BUFFER_SIZE        (16*1024)
+#define     ROM_SIZE                (16*1024)
 #define     CARTRIDGE_ROM_BASE      0xc000
 #define     CARTRIDGE_ROM_END       0xffef
 
@@ -82,7 +82,7 @@ static void        util_restore_text_screen(void);
    Module globals
 ----------------------------------------- */
 static uint8_t              text_screen_save[512];
-static uint8_t              code_buffer[CODE_BUFFER_SIZE];
+static uint8_t              data_buffer[ROM_SIZE];
 static file_param_t         cas_file;
 static file_param_t         disk_img_file;
 static loader_file_type_t   disk_img_file_type;
@@ -240,7 +240,7 @@ void loader(void)
                      * and change EXEC default vector to 0xC000
                      */
                     fat32_fopen(&directory_list[(list_start + highlighted_line)], &file);
-                    rom_bytes = fat32_fread(&file, code_buffer, CODE_BUFFER_SIZE);
+                    rom_bytes = fat32_fread(&file, data_buffer, ROM_SIZE);
                     fat32_fclose(&file);
 
                     text_clear();
@@ -252,7 +252,7 @@ void loader(void)
                     }
                     else
                     {
-                        mem_load(CARTRIDGE_ROM_BASE, code_buffer, rom_bytes);
+                        mem_load(CARTRIDGE_ROM_BASE, data_buffer, rom_bytes);
                         mem_define_rom(CARTRIDGE_ROM_BASE, (rom_bytes - 1));
                         mem_write(EXEC_VECTOR_HI, 0xc0);
                         mem_write(EXEC_VECTOR_LO, 0x00);
@@ -321,16 +321,29 @@ void loader(void)
 }
 
 /*------------------------------------------------
- * loader_cas_fread()
+ * loader_tape_fread()
  *
  *  Read the open CAS file.
  *
  *  param:  Pointer to caller buffer and bytes to read
  *  return: Bytes read
  */
-int loader_cas_fread(uint8_t *buffer, uint16_t bytes)
+int loader_tape_fread(uint8_t *buffer, uint16_t bytes)
 {
     return fat32_fread(&cas_file, buffer, bytes);
+}
+
+/*------------------------------------------------
+ * loader_tape_fwrite()
+ *
+ *  Write to the open CAS file.
+ *
+ *  param:  Pointer to caller buffer and bytes to write
+ *  return: Bytes written
+ */
+int loader_tape_fwrite(uint8_t *buffer, uint16_t bytes)
+{
+    return fat32_fwrite(&cas_file, buffer, bytes);
 }
 
 /*------------------------------------------------

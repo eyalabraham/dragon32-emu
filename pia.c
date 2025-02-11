@@ -500,7 +500,7 @@ static uint8_t io_handler_pia1_pa(uint16_t address, uint8_t data, mem_operation_
          */
         if ( bit_index == 0 )
         {
-            cas_eof = !loader_cas_fread(&byte, 1);
+            cas_eof = !loader_tape_fread(&byte, 1);
 
             bit_index = 9;
             bit_timing_threshold = 0;
